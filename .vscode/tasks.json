@@ -1,0 +1,18 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Launch Android Emulator",
+      "type": "shell",
+      "command": "powershell -ExecutionPolicy Bypass -File .\\tooling\\launch_emulator.ps1",
+      "options": {
+        "cwd": "${workspaceFolder}/smart_plug_app"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "never",
+        "panel": "shared"
+      }
+    }
+  ]
+}

@@ -15,17 +15,13 @@ class AutomationService extends ChangeNotifier {
 
   void _onTelemetryUpdated() {
     final data = telemetryProvider.data;
-    
+
     // Safety thresholds
     const double maxPower = 2500.0;
-    const double maxVoltage = 270.0;
-
-    if (data.power > maxPower || data.voltage > maxVoltage) {
+    if (data.power > maxPower) {
       if (!_safetyTriggered && data.isRelayOn) {
-        _triggerSafetyProtocol('OVERLOAD DETECTED! Power overrides active.');
+        _triggerSafetyProtocol('OVERLOAD DETECTED - SHUTTING DOWN');
       }
-    } else {
-      // Optional: Auto-recover or leave it manual. We'll leave it manual by requiring the user to dismiss/restart or turn back on explicitly.
     }
   }
 
@@ -35,12 +31,9 @@ class AutomationService extends ChangeNotifier {
     notifyListeners();
 
     debugPrint('SAFETY TRIGGERED: $message');
-    // Force off
+    // Force off immediately on overload condition.
     if (telemetryProvider.data.isRelayOn) {
-      // Send toggle command (assuming it toggles, but to be completely deterministic we should send OFF, but togglePower is what we have right now). 
-      // Tasmota: "Power off" command is better. I will add an explicit off command to api/mqtt later. 
-      // For now, if it's ON, togglePower will turn it OFF.
-      await telemetryProvider.turnOff(); 
+      await telemetryProvider.turnOff();
     }
   }
 

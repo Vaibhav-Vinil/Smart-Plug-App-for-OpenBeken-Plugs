@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../core/connection_manager.dart';
 import '../core/telemetry_provider.dart';
-import 'widgets/power_button.dart';
+import 'widgets/neumorphic_toggle.dart';
 import 'widgets/telemetry_cards.dart';
-import 'insights_tab.dart';
+import 'widgets/schedule_bottom_sheet.dart';
+import 'widgets/smart_tile.dart';
+import 'widgets/device_health.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -15,192 +18,103 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  ConnectionMode _previousMode = ConnectionMode.offline;
-
-  @override
-  void initState() {
-    super.initState();
-    final cm = context.read<ConnectionManager>();
-    _previousMode = cm.currentMode;
-    cm.addListener(_onConnectionChanged);
-  }
-
-  void _onConnectionChanged() {
-    final cm = context.read<ConnectionManager>();
-    if (cm.currentMode != _previousMode) {
-      String msg = '';
-      if (cm.currentMode == ConnectionMode.local) msg = 'Switched to Local Mode';
-      if (cm.currentMode == ConnectionMode.remote) msg = 'Switched to Remote Mode';
-      if (cm.currentMode == ConnectionMode.offline) msg = 'Connection Lost';
-
-      if (mounted && msg.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(msg),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: Colors.grey.shade900,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-      _previousMode = cm.currentMode;
-    }
-  }
-
-  @override
-  void dispose() {
-    // context.read is potentially unsafe here, ignoring for simplicity as it lives at root
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        drawer: const DeviceInfoDrawer(),
-        extendBodyBehindAppBar: true,
-        appBar: AppBar(
-          title: const Text(
-            'Smart Monitor',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          centerTitle: true,
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          bottom: const TabBar(
-            indicatorColor: Colors.greenAccent,
-            tabs: [
-              Tab(icon: Icon(Icons.dashboard), text: 'Dashboard'),
-              Tab(icon: Icon(Icons.analytics), text: 'Insights'),
-            ],
-          ),
-        ),
-        body: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFF14141c), Color(0xFF000000)],
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-            ),
-          ),
-          child: SafeArea(
-            child: Consumer<TelemetryProvider>(
-              builder: (context, provider, child) {
-                if (provider.isDisconnected) {
-                  return const _DisconnectedShimmer();
-                }
-
-                return const TabBarView(
-                  children: [
-                    _MainDashboardView(),
-                    InsightsTab(),
-                  ],
-                );
-              },
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MainDashboardView extends StatelessWidget {
-  const _MainDashboardView();
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: const [
-          ConnectionStatusHeader(),
-          SizedBox(height: 40),
-          Center(child: PowerButton()),
-          SizedBox(height: 40),
-          TelemetryCards(),
-          SizedBox(height: 32),
+    return Scaffold(
+      backgroundColor: const Color(0xFFF4F7FB),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 24.0),
+            child: Center(child: ConnectionBadge()),
+          )
         ],
       ),
-    );
-  }
-}
+      body: Consumer<TelemetryProvider>(
+        builder: (context, provider, child) {
+          if (provider.isDisconnected && provider.data.power == 0 && provider.data.voltage == 0) {
+            return const _LoadingShimmer();
+          }
 
-class _DisconnectedShimmer extends StatelessWidget {
-  const _DisconnectedShimmer();
+          return SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const HeroHeader(),
+                const SizedBox(height: 32),
+                const Center(child: NeumorphicToggle()),
+                const SizedBox(height: 32),
+                
+                // Schedule Trigger
+                GestureDetector(
+                  onTap: () => ScheduleBottomSheet.show(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+                    margin: const EdgeInsets.only(bottom: 32),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F0FE),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Icon(Icons.schedule, color: Color(0xFF1565C0), size: 20),
+                        SizedBox(width: 8),
+                        Text('Set Schedule', style: TextStyle(color: Color(0xFF1565C0), fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
+                
+                const TelemetryCards(),
+                const SizedBox(height: 32),
+                
+                const Text(
+                  'Usage History',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                ),
+                const SizedBox(height: 16),
+                const _SmoothLineChart(),
+                const SizedBox(height: 32),
 
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Shimmer.fromColors(
-            baseColor: Colors.grey[800]!,
-            highlightColor: Colors.grey[600]!,
-            child: const Icon(
-              Icons.sensors_off,
-              size: 80,
+                const DeviceHealthSection(),
+                const SizedBox(height: 40),
+              ],
             ),
-          ),
-          const SizedBox(height: 20),
-          Shimmer.fromColors(
-            baseColor: Colors.grey[800]!,
-            highlightColor: Colors.grey[600]!,
-            child: const Text(
-              'Connecting to Device...',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 }
 
-class ConnectionStatusHeader extends StatelessWidget {
-  const ConnectionStatusHeader({super.key});
+class ConnectionBadge extends StatelessWidget {
+  const ConnectionBadge({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Consumer<ConnectionManager>(
       builder: (context, manager, child) {
-        Color statusColor;
-        String statusText;
-
-        switch (manager.currentMode) {
-          case ConnectionMode.local:
-            statusColor = Colors.greenAccent;
-            statusText = 'Local Mode • ${manager.currentSsid ?? "LAN"}';
-            break;
-          case ConnectionMode.remote:
-            statusColor = Colors.blueAccent;
-            statusText = 'Cloud Connected';
-            break;
-          case ConnectionMode.offline:
-            statusColor = Colors.redAccent;
-            statusText = 'Offline';
-            break;
-        }
-
-        return Center(
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-            decoration: BoxDecoration(
-              color: statusColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: statusColor.withValues(alpha: 0.3)),
-            ),
-            child: Text(
-              statusText,
-              style: TextStyle(
-                color: statusColor,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
+        final isLocal = manager.currentMode == ConnectionMode.local;
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: isLocal ? Colors.green.withValues(alpha: 0.1) : Colors.blue.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(isLocal ? Icons.wifi : Icons.cloud, size: 14, color: isLocal ? Colors.green : Colors.blue),
+              const SizedBox(width: 6),
+              Text(
+                isLocal ? 'Local' : 'Cloud',
+                style: TextStyle(color: isLocal ? Colors.green : Colors.blue, fontWeight: FontWeight.w700, fontSize: 12),
               ),
-            ),
+            ],
           ),
         );
       },
@@ -208,46 +122,153 @@ class ConnectionStatusHeader extends StatelessWidget {
   }
 }
 
-class DeviceInfoDrawer extends StatelessWidget {
-  const DeviceInfoDrawer({super.key});
+class HeroHeader extends StatelessWidget {
+  const HeroHeader({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Drawer(
-      backgroundColor: const Color(0xFF14141c),
-      child: Consumer<TelemetryProvider>(
-        builder: (context, provider, child) {
-          return ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              const DrawerHeader(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [Colors.greenAccent, Colors.blueAccent]),
-                ),
-                child: Text(
-                  'Device Info',
-                  style: TextStyle(color: Colors.black, fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.memory, color: Colors.white70),
-                title: const Text('Firmware Version'),
-                subtitle: Text(provider.firmwareVersion, style: const TextStyle(color: Colors.greenAccent)),
-              ),
-              ListTile(
-                leading: const Icon(Icons.wifi, color: Colors.white70),
-                title: const Text('IP Address'),
-                subtitle: Text(provider.ipAddress, style: const TextStyle(color: Colors.greenAccent)),
-              ),
-              ListTile(
-                leading: const Icon(Icons.barcode_reader, color: Colors.white70),
-                title: const Text('MAC Address'),
-                subtitle: Text(provider.macAddress, style: const TextStyle(color: Colors.greenAccent)),
-              ),
-            ],
-          );
-        },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 8),
+            const Text('Online', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w600, fontSize: 14)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Smart Plug',
+          style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.black87, letterSpacing: -0.5),
+        ),
+        const Text(
+          'Living Room',
+          style: TextStyle(fontSize: 16, color: Colors.black54),
+        ),
+      ],
+    );
+  }
+}
+
+class _LoadingShimmer extends StatelessWidget {
+  const _LoadingShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey.shade300,
+      highlightColor: Colors.grey.shade100,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(24),
+        itemCount: 4,
+        itemBuilder: (_, __) => Padding(
+          padding: const EdgeInsets.only(bottom: 24.0),
+          child: Container(
+            height: 120,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+            ),
+          ),
+        ),
       ),
+    );
+  }
+}
+
+class _SmoothLineChart extends StatelessWidget {
+  const _SmoothLineChart();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<TelemetryProvider>(
+      builder: (context, provider, child) {
+        final history = provider.powerHistory;
+
+        if (history.isEmpty) {
+          return const SmartTile(
+            child: SizedBox(
+              height: 180,
+              child: Center(child: Text('Gathering data...', style: TextStyle(color: Colors.black45))),
+            ),
+          );
+        }
+
+        List<FlSpot> spots = [];
+        for (int i = 0; i < history.length; i++) {
+          spots.add(FlSpot(i.toDouble(), history[i]));
+        }
+
+        double maxY = history.reduce((curr, next) => curr > next ? curr : next) * 1.5;
+        if (maxY < 10) maxY = 10;
+
+        return SmartTile(
+          padding: const EdgeInsets.only(top: 32, bottom: 0, left: 0, right: 0),
+          child: SizedBox(
+            height: 180,
+            child: LineChart(
+              LineChartData(
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  drawHorizontalLine: true,
+                  getDrawingHorizontalLine: (val) => FlLine(color: Colors.black.withValues(alpha: 0.05), strokeWidth: 1),
+                ),
+                titlesData: FlTitlesData(
+                  show: true,
+                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 22,
+                      getTitlesWidget: (value, meta) {
+                        return Container(); // Keep generic empty ticks
+                      },
+                    ),
+                  ),
+                ),
+                borderData: FlBorderData(
+                  show: true,
+                  border: Border(bottom: BorderSide(color: Colors.black.withValues(alpha: 0.1), width: 1)),
+                ),
+                minX: 0,
+                maxX: spots.length.toDouble() > 50 ? spots.length.toDouble() : 50,
+                minY: 0,
+                maxY: maxY,
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: spots,
+                    isCurved: true,
+                    color: const Color(0xFF1565C0),
+                    barWidth: 3,
+                    isStrokeCapRound: true,
+                    dotData: FlDotData(show: false),
+                    shadow: Shadow(color: const Color(0xFF1565C0).withValues(alpha: 0.2), blurRadius: 4, offset: const Offset(0, 4)),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFF1565C0).withValues(alpha: 0.2),
+                          const Color(0xFF1565C0).withValues(alpha: 0.0),
+                        ],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -33,11 +33,14 @@ class SmartPlugApp extends StatelessWidget {
         title: 'Smart Plug Monitor',
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.greenAccent, 
-            brightness: Brightness.dark,
+            seedColor: const Color(0xFF1565C0), 
+            brightness: Brightness.light,
+          ).copyWith(
+            surface: const Color(0xFFFFFFFF),
           ),
+          scaffoldBackgroundColor: const Color(0xFFF4F7FB),
           textTheme: GoogleFonts.interTextTheme(
-            Theme.of(context).textTheme.apply(bodyColor: Colors.white, displayColor: Colors.white),
+            Theme.of(context).textTheme.apply(bodyColor: Colors.black87, displayColor: Colors.black87),
           ),
           useMaterial3: true,
         ),
@@ -59,38 +62,45 @@ class SafetyWrapper extends StatefulWidget {
 
 class _SafetyWrapperState extends State<SafetyWrapper> {
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AutomationService>().addListener(_onSafetyAlert);
-    });
-  }
-
-  void _onSafetyAlert() {
-    final automation = context.read<AutomationService>();
-    if (automation.isSafetyTriggered && automation.alertMessage != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            automation.alertMessage!,
-            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-          ),
-          backgroundColor: Colors.redAccent,
-          duration: const Duration(seconds: 5),
-          action: SnackBarAction(
-            label: 'DISMISS',
-            textColor: Colors.yellow,
-            onPressed: () {
-              automation.resetSafety();
-            },
-          ),
-        ),
-      );
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return widget.child;
+    return Consumer<AutomationService>(
+      builder: (context, automation, child) {
+        return Material(
+          color: const Color(0xFFF4F7FB),
+          child: Column(
+            children: [
+              if (automation.isSafetyTriggered && automation.alertMessage != null)
+                Container(
+                  width: double.infinity,
+                  color: Colors.redAccent,
+                  padding: EdgeInsets.only(
+                    top: MediaQuery.of(context).padding.top + 16,
+                    bottom: 16,
+                    left: 24,
+                    right: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: Colors.white),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          automation.alertMessage!,
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white),
+                        onPressed: () => automation.resetSafety(),
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(child: widget.child),
+            ],
+          ),
+        );
+      },
+    );
   }
 }

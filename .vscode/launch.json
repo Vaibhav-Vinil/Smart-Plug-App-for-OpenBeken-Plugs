@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Smart Plug App (Android)",
+      "request": "launch",
+      "type": "dart",
+      "program": "${workspaceFolder}/smart_plug_app/lib/main.dart",
+      "cwd": "${workspaceFolder}/smart_plug_app",
+      "deviceId": "emulator-5554",
+      "preLaunchTask": "Launch Android Emulator",
+      "toolArgs": [
+        "--device-timeout",
+        "120"
+      ]
+    }
+  ]
+}

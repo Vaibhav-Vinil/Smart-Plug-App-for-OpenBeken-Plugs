@@ -57,6 +57,10 @@ class ApiService {
     return _sendCommand('Power%20Off');
   }
 
+  Future<bool> turnOn() async {
+    return _sendCommand('Power%20On');
+  }
+
   Future<bool> _sendCommand(String cmd) async {
     try {
       final response = await http.get(Uri.parse('$_baseUrl/cm?cmnd=$cmd'));

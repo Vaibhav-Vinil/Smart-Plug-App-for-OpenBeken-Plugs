@@ -195,6 +195,22 @@ class TelemetryProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> turnOn() async {
+    _isLoading = true;
+    notifyListeners();
+
+    if (connectionManager.currentMode == ConnectionMode.local) {
+      await _apiService.turnOn();
+      await Future.delayed(const Duration(milliseconds: 500));
+      await _fetchLocalData();
+    } else if (connectionManager.currentMode == ConnectionMode.remote) {
+      _mqttService.publishCommand('on');
+    }
+
+    _isLoading = false;
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     connectionManager.removeListener(_onConnectionChanged);
