@@ -84,6 +84,16 @@ class TelemetryProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
+  bool _isDisconnected = true;
+  bool get isDisconnected => _isDisconnected;
+
+  String firmwareVersion = 'Unknown';
+  String macAddress = 'Unknown';
+  String ipAddress = 'Unknown';
+
+  // In-memory historical buffer for the LineChart
+  final List<double> powerHistory = [];
+
   Timer? _pollingTimer;
 
   TelemetryProvider(this.connectionManager) {
@@ -110,18 +120,45 @@ class TelemetryProvider extends ChangeNotifier {
   Future<void> _fetchLocalData() async {
     final jsonData = await _apiService.fetchStatus();
     if (jsonData != null) {
+      _isDisconnected = false;
       _data = TelemetryData.fromJson(jsonData);
+      
+      // Parse device metadata if present in StatusNET or StatusFWR
+      if (jsonData.containsKey('StatusNET')) {
+        macAddress = jsonData['StatusNET']['Mac'] ?? macAddress;
+        ipAddress = jsonData['StatusNET']['IPAddress'] ?? ipAddress;
+      }
+      if (jsonData.containsKey('StatusFWR')) {
+        firmwareVersion = jsonData['StatusFWR']['Version'] ?? firmwareVersion;
+      }
+      
+      _updateHistory(_data.power);
       notifyListeners();
+    } else {
+       _isDisconnected = true;
+       notifyListeners();
     }
   }
 
   Future<void> _startMqttConnection() async {
-    await _mqttService.connect();
+    final connected = await _mqttService.connect();
+    _isDisconnected = !connected;
+    notifyListeners();
   }
 
   void _onMqttDataReceived(Map<String, dynamic> jsonData) {
+    _isDisconnected = false;
     _data = TelemetryData.fromJson(jsonData);
+    _updateHistory(_data.power);
     notifyListeners();
+  }
+  
+  void _updateHistory(double power) {
+    powerHistory.add(power);
+    // Keep last 60 plot points (e.g. 5 mins of 5s resolution, or more to fit charting visually well)
+    if (powerHistory.length > 50) {
+      powerHistory.removeAt(0);
+    }
   }
 
   Future<void> togglePower() async {
@@ -136,6 +173,22 @@ class TelemetryProvider extends ChangeNotifier {
     } else if (connectionManager.currentMode == ConnectionMode.remote) {
       _mqttService.publishCommand('toggle');
       // Assuming MQTT receives updated feedback over state topic shortly.
+    }
+
+    _isLoading = false;
+    notifyListeners();
+  }
+
+  Future<void> turnOff() async {
+    _isLoading = true;
+    notifyListeners();
+
+    if (connectionManager.currentMode == ConnectionMode.local) {
+      await _apiService.turnOff();
+      await Future.delayed(const Duration(milliseconds: 500));
+      await _fetchLocalData();
+    } else if (connectionManager.currentMode == ConnectionMode.remote) {
+      _mqttService.turnOff();
     }
 
     _isLoading = false;

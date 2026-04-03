@@ -64,6 +64,10 @@ class MqttService {
     }
   }
 
+  void turnOff() {
+    publishCommand('off');
+  }
+
   void disconnect() {
     _client?.disconnect();
   }

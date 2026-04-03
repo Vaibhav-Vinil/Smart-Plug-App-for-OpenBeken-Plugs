@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:vibration/vibration.dart';
 import '../../core/telemetry_provider.dart';
 
 class PowerButton extends StatelessWidget {
   const PowerButton({super.key});
+
+  void _triggerHaptic() async {
+    if (await Vibration.hasVibrator()) {
+      Vibration.vibrate(duration: 50);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -13,34 +20,43 @@ class PowerButton extends StatelessWidget {
         final isLoading = provider.isLoading;
 
         return GestureDetector(
-          onTap: isLoading ? null : () => provider.togglePower(),
+          onTap: isLoading ? null : () {
+            _triggerHaptic();
+            provider.togglePower();
+          },
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            height: 150,
-            width: 150,
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeOutBack,
+            height: 160,
+            width: 160,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: isOn ? Colors.green.withValues(alpha: 0.2) : Colors.grey.withValues(alpha: 0.2),
+              color: Colors.black,
               border: Border.all(
-                color: isOn ? Colors.green : Colors.grey,
-                width: 4,
+                color: isOn ? Colors.greenAccent : Colors.redAccent.withValues(alpha: 0.5),
+                width: 2,
               ),
               boxShadow: [
-                if (isOn)
-                  BoxShadow(
-                    color: Colors.green.withValues(alpha: 0.5),
-                    blurRadius: 20,
-                    spreadRadius: 5,
-                  ),
+                BoxShadow(
+                  color: isOn ? Colors.greenAccent.withValues(alpha: 0.6) : Colors.redAccent.withValues(alpha: 0.1),
+                  blurRadius: isOn ? 40 : 15,
+                  spreadRadius: isOn ? 10 : 2,
+                ),
+                // Inner glow simulate
+                BoxShadow(
+                  color: isOn ? Colors.greenAccent.withValues(alpha: 0.2) : Colors.black,
+                  blurRadius: 10,
+                  spreadRadius: -5,
+                ),
               ],
             ),
             child: Center(
               child: isLoading
-                  ? const CircularProgressIndicator()
+                  ? const CircularProgressIndicator(color: Colors.white)
                   : Icon(
                       Icons.power_settings_new,
-                      size: 80,
-                      color: isOn ? Colors.green : Colors.grey,
+                      size: 70,
+                      color: isOn ? Colors.white : Colors.grey.shade800,
                     ),
             ),
           ),
