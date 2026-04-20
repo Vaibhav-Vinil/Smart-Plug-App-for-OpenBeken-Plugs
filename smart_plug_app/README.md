@@ -19,3 +19,9 @@ samples, guidance on mobile development, and a full API reference.
 To Run the App on windows
 flutter emulators --launch Medium_Phone_API_36.1
 flutter run -d emulator-5554
+
+To run on Andoid Phone
+cd c:/Users/Vaibhav/Desktop/BKH/smart_plug_app
+flutter run
+
+http://192.168.1.106/index
