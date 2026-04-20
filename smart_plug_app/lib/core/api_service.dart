@@ -4,23 +4,33 @@ import 'package:http/http.dart' as http;
 import 'config.dart';
 
 class ApiService {
-  final String _baseUrl = 'http://${SecretConfig.plugIpAddress}:${SecretConfig.localHttpPort}';
+  String _ip;
+  final String _port;
+
+  ApiService({required String ip, String port = SecretConfig.localHttpPort})
+      : _ip = ip,
+        _port = port;
+
+  void updateIp(String newIp) {
+    _ip = newIp;
+  }
+
+  String get _baseUrl => 'http://$_ip:$_port';
 
   Future<Map<String, dynamic>?> fetchStatus() async {
     try {
-      final response8 = await http.get(Uri.parse('$_baseUrl/cm?cmnd=status%208'));
+      final response8 = await http.get(Uri.parse('$_baseUrl/cm?cmnd=status%208')).timeout(const Duration(seconds: 3));
       
-      // Secondary queries (we don't strictly require 200 on all for the loop to parse what it gets)
-      final response11 = await http.get(Uri.parse('$_baseUrl/cm?cmnd=status%2011'));
-      final response5 = await http.get(Uri.parse('$_baseUrl/cm?cmnd=status%205'));
-      final response2 = await http.get(Uri.parse('$_baseUrl/cm?cmnd=status%202'));
+      final response11 = await http.get(Uri.parse('$_baseUrl/cm?cmnd=status%2011')).timeout(const Duration(seconds: 2));
+      final response5 = await http.get(Uri.parse('$_baseUrl/cm?cmnd=status%205')).timeout(const Duration(seconds: 2));
+      final response2 = await http.get(Uri.parse('$_baseUrl/cm?cmnd=status%202')).timeout(const Duration(seconds: 2));
       
       if (response8.statusCode == 200) {
         try {
           Map<String, dynamic> data8 = json.decode(utf8.decode(response8.bodyBytes));
           
           if (!data8.containsKey('StatusSNS') && !data8.containsKey('Status')) {
-            final fallback = await http.get(Uri.parse('$_baseUrl/cm?cmnd=EnergyStatus'));
+            final fallback = await http.get(Uri.parse('$_baseUrl/cm?cmnd=EnergyStatus')).timeout(const Duration(seconds: 2));
             if (fallback.statusCode == 200) {
               final fbData = json.decode(utf8.decode(fallback.bodyBytes));
               data8['EnergyStatus'] = fbData;
@@ -38,7 +48,7 @@ class ApiService {
             ...data8,
           };
         } catch (e) {
-          debugPrint('JSON Parsing Error (ignoring frame): $e');
+          debugPrint('JSON Parsing Error: $e');
           return null;
         }
       }
@@ -49,25 +59,14 @@ class ApiService {
     }
   }
 
-  Future<bool> togglePower() async {
-    return _sendCommand('Power%20Toggle');
-  }
-
-  Future<bool> turnOff() async {
-    return _sendCommand('Power%20Off');
-  }
-
-  Future<bool> turnOn() async {
-    return _sendCommand('Power%20On');
-  }
+  Future<bool> togglePower() async => _sendCommand('Power%20Toggle');
+  Future<bool> turnOff() async => _sendCommand('Power%20Off');
+  Future<bool> turnOn() async => _sendCommand('Power%20On');
 
   Future<bool> _sendCommand(String cmd) async {
     try {
-      final response = await http.get(Uri.parse('$_baseUrl/cm?cmnd=$cmd'));
-      if (response.statusCode == 200) {
-        return true;
-      }
-      return false;
+      final response = await http.get(Uri.parse('$_baseUrl/cm?cmnd=$cmd')).timeout(const Duration(seconds: 5));
+      return response.statusCode == 200;
     } catch (e) {
       debugPrint('HTTP Command Error: $e');
       return false;

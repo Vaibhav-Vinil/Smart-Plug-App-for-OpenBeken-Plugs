@@ -1,27 +1,56 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'core/connection_manager.dart';
 import 'core/telemetry_provider.dart';
 import 'core/automation_service.dart';
+import 'core/settings_service.dart';
+import 'core/discovery_service.dart';
+import 'services/setup_service.dart';
 import 'ui/dashboard_screen.dart';
+import 'ui/setup_screen.dart';
 
-void main() {
-  runApp(const SmartPlugApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
+  final settingsService = SettingsService(prefs);
+  
+  runApp(SmartPlugApp(settingsService: settingsService));
 }
 
 class SmartPlugApp extends StatelessWidget {
-  const SmartPlugApp({super.key});
+  final SettingsService settingsService;
+  
+  const SmartPlugApp({super.key, required this.settingsService});
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => ConnectionManager()),
-        ChangeNotifierProxyProvider<ConnectionManager, TelemetryProvider>(
-          create: (context) => TelemetryProvider(context.read<ConnectionManager>()),
-          update: (context, connectionManager, telemetryProvider) => 
-            telemetryProvider ?? TelemetryProvider(connectionManager),
+        ChangeNotifierProvider.value(value: settingsService),
+        ChangeNotifierProvider(create: (_) => DiscoveryService()),
+        ChangeNotifierProxyProvider<SettingsService, ConnectionManager>(
+          create: (context) => ConnectionManager(context.read<SettingsService>()),
+          update: (context, settings, manager) => manager ?? ConnectionManager(settings),
+        ),
+        ChangeNotifierProxyProvider3<DiscoveryService, ConnectionManager, SettingsService, SetupService>(
+          create: (context) => SetupService(
+            context.read<DiscoveryService>(),
+            context.read<ConnectionManager>(),
+            context.read<SettingsService>(),
+          ),
+          update: (context, discovery, connection, settings, setup) => 
+            setup ?? SetupService(discovery, connection, settings),
+        ),
+        ChangeNotifierProxyProvider3<ConnectionManager, SettingsService, DiscoveryService, TelemetryProvider>(
+          create: (context) => TelemetryProvider(
+            context.read<ConnectionManager>(),
+            context.read<SettingsService>(),
+            context.read<DiscoveryService>(),
+          ),
+          update: (context, connection, settings, discovery, telemetry) => 
+            telemetry ?? TelemetryProvider(connection, settings, discovery),
         ),
         ChangeNotifierProxyProvider<TelemetryProvider, AutomationService>(
           create: (context) => AutomationService(context.read<TelemetryProvider>()),
@@ -44,7 +73,11 @@ class SmartPlugApp extends StatelessWidget {
           ),
           useMaterial3: true,
         ),
-        home: const SafetyWrapper(child: DashboardScreen()),
+        initialRoute: settingsService.isSetupComplete ? '/' : '/setup',
+        routes: {
+          '/': (context) => const SafetyWrapper(child: DashboardScreen()),
+          '/setup': (context) => const SetupScreen(),
+        },
         debugShowCheckedModeBanner: false,
       ),
     );

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'connection_manager.dart';
 import 'api_service.dart';
 import 'mqtt_service.dart';
+import 'settings_service.dart';
+import 'discovery_service.dart';
 
 class TelemetryData {
   double voltage;
@@ -26,7 +28,6 @@ class TelemetryData {
   });
 
   factory TelemetryData.fromJson(Map<String, dynamic> json) {
-    // Helper to safely extract double
     double getDbl(Map<String, dynamic>? obj, String key, [double def = 0.0]) {
       if (obj != null && obj.containsKey(key) && obj[key] != null) {
         var val = obj[key];
@@ -54,7 +55,6 @@ class TelemetryData {
     }
 
     Map<String, dynamic>? esp32 = statusSns != null ? statusSns['ESP32'] as Map<String, dynamic>? : null;
-
     Map<String, dynamic>? statusSts = json['StatusSTS'] as Map<String, dynamic>?;
     Map<String, dynamic>? wifi = statusSts != null ? statusSts['Wifi'] as Map<String, dynamic>? : null;
 
@@ -75,7 +75,10 @@ class TelemetryData {
 
 class TelemetryProvider extends ChangeNotifier {
   final ConnectionManager connectionManager;
-  final ApiService _apiService = ApiService();
+  final SettingsService settingsService;
+  final DiscoveryService discoveryService;
+  
+  late final ApiService _apiService;
   final MqttService _mqttService = MqttService();
 
   TelemetryData _data = TelemetryData();
@@ -91,15 +94,38 @@ class TelemetryProvider extends ChangeNotifier {
   String macAddress = 'Unknown';
   String ipAddress = 'Unknown';
 
-  // In-memory historical buffer for the LineChart
   final List<double> powerHistory = [];
-
   Timer? _pollingTimer;
 
-  TelemetryProvider(this.connectionManager) {
+  TelemetryProvider(this.connectionManager, this.settingsService, this.discoveryService) {
+    _apiService = ApiService(ip: settingsService.plugIpAddress);
     connectionManager.addListener(_onConnectionChanged);
+    settingsService.addListener(_onSettingsChanged);
     _mqttService.onTelemetryReceived = _onMqttDataReceived;
-    _onConnectionChanged(); // initial check
+    _onConnectionChanged();
+  }
+
+  void _onSettingsChanged() {
+    _apiService.updateIp(settingsService.plugIpAddress);
+    
+    // If setup is no longer complete (device deleted), clear stale data
+    if (!settingsService.isSetupComplete) {
+      resetData();
+    }
+
+    if (connectionManager.currentMode == ConnectionMode.remote) {
+      _startMqttConnection();
+    }
+  }
+
+  void resetData() {
+    _data = TelemetryData();
+    powerHistory.clear();
+    firmwareVersion = 'Unknown';
+    macAddress = 'Unknown';
+    ipAddress = 'Unknown';
+    _isDisconnected = true;
+    notifyListeners();
   }
 
   void _onConnectionChanged() {
@@ -123,7 +149,6 @@ class TelemetryProvider extends ChangeNotifier {
       _isDisconnected = false;
       _data = TelemetryData.fromJson(jsonData);
       
-      // Parse device metadata if present in StatusNET or StatusFWR
       if (jsonData.containsKey('StatusNET')) {
         macAddress = jsonData['StatusNET']['Mac'] ?? macAddress;
         ipAddress = jsonData['StatusNET']['IPAddress'] ?? ipAddress;
@@ -136,12 +161,38 @@ class TelemetryProvider extends ChangeNotifier {
       notifyListeners();
     } else {
        _isDisconnected = true;
+       // Trigger background discovery if unreachable in local mode and WiFi is active
+       if (connectionManager.currentMode == ConnectionMode.local && 
+           connectionManager.isWifiConnected &&
+           !discoveryService.isScanning) {
+         
+         discoveryService.startDiscovery().then((_) {
+           // Allow some time for discovery to find devices
+           Future.delayed(const Duration(seconds: 8), () {
+             if (discoveryService.discoveredDevices.isNotEmpty) {
+               // Look for obkN device specifically if possible, otherwise first match
+               final device = discoveryService.discoveredDevices.firstWhere(
+                 (d) => d.name.toLowerCase().contains('obkn'),
+                 orElse: () => discoveryService.discoveredDevices.first,
+               );
+               
+               debugPrint('Auto-discovered device: ${device.name} at ${device.ip}');
+               settingsService.setPlugIpAddress(device.ip);
+             }
+             discoveryService.stopDiscovery();
+           });
+         });
+       }
        notifyListeners();
     }
   }
 
   Future<void> _startMqttConnection() async {
-    final connected = await _mqttService.connect();
+    final connected = await _mqttService.connect(
+      host: settingsService.mqttBrokerHost,
+      username: settingsService.mqttUsername,
+      password: settingsService.mqttPassword,
+    );
     _isDisconnected = !connected;
     notifyListeners();
   }
@@ -155,7 +206,6 @@ class TelemetryProvider extends ChangeNotifier {
   
   void _updateHistory(double power) {
     powerHistory.add(power);
-    // Keep last 60 plot points (e.g. 5 mins of 5s resolution, or more to fit charting visually well)
     if (powerHistory.length > 50) {
       powerHistory.removeAt(0);
     }
@@ -167,12 +217,10 @@ class TelemetryProvider extends ChangeNotifier {
 
     if (connectionManager.currentMode == ConnectionMode.local) {
       await _apiService.togglePower();
-      // Fast refresh assumption
       await Future.delayed(const Duration(milliseconds: 500));
       await _fetchLocalData();
     } else if (connectionManager.currentMode == ConnectionMode.remote) {
       _mqttService.publishCommand('toggle');
-      // Assuming MQTT receives updated feedback over state topic shortly.
     }
 
     _isLoading = false;
@@ -214,6 +262,7 @@ class TelemetryProvider extends ChangeNotifier {
   @override
   void dispose() {
     connectionManager.removeListener(_onConnectionChanged);
+    settingsService.removeListener(_onSettingsChanged);
     _pollingTimer?.cancel();
     _mqttService.disconnect();
     super.dispose();

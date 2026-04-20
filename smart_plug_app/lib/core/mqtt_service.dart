@@ -8,8 +8,12 @@ class MqttService {
   MqttServerClient? _client;
   Function(Map<String, dynamic>)? onTelemetryReceived;
 
-  Future<bool> connect() async {
-    _client = MqttServerClient(SecretConfig.mqttBrokerHost, SecretConfig.mqttClientId);
+  Future<bool> connect({
+    required String host,
+    required String username,
+    required String password,
+  }) async {
+    _client = MqttServerClient(host, SecretConfig.mqttClientId);
     _client!.port = SecretConfig.mqttBrokerPort;
     _client!.logging(on: false);
     _client!.keepAlivePeriod = 20;
@@ -18,7 +22,7 @@ class MqttService {
     _client!.onSubscribed = _onSubscribed;
     
     try {
-      await _client!.connect(SecretConfig.mqttUsername, SecretConfig.mqttPassword);
+      await _client!.connect(username, password);
     } catch (e) {
       debugPrint('MQTT Exception: $e');
       _client!.disconnect();

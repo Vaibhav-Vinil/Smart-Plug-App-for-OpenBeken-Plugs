@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../core/settings_service.dart';
 import '../core/connection_manager.dart';
 import '../core/telemetry_provider.dart';
 import 'widgets/neumorphic_toggle.dart';
@@ -18,6 +19,32 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  void _showDeleteConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Device?'),
+        content: const Text('This will remove the current smart plug from the app. You will need to set it up again to use it.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              final settings = context.read<SettingsService>();
+              await settings.deleteCurrentDevice();
+              if (context.mounted) {
+                Navigator.of(context).pushNamedAndRemoveUntil('/setup', (route) => false);
+              }
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -25,9 +52,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: 24.0),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline, color: Color(0xFF1565C0)),
+            onPressed: () => Navigator.of(context).pushNamed('/setup'),
+            tooltip: 'Add Device',
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Color(0xFF1565C0)),
+            onSelected: (value) {
+              if (value == 'delete') {
+                _showDeleteConfirmation(context);
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Delete Device', style: TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const Padding(
+            padding: EdgeInsets.only(right: 16.0),
             child: Center(child: ConnectionBadge()),
           )
         ],
