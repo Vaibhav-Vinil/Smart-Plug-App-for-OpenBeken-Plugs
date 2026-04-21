@@ -22,7 +22,6 @@ class ScheduleBottomSheet extends StatefulWidget {
 class _ScheduleBottomSheetState extends State<ScheduleBottomSheet> {
   TimeOfDay _selectedTime = TimeOfDay.now();
   bool _turnOn = true;
-  static Timer? _activeTimer;
   static String? _statusMessage;
 
   void _selectTime() async {
@@ -38,8 +37,6 @@ class _ScheduleBottomSheetState extends State<ScheduleBottomSheet> {
   }
 
   void _setSchedule() {
-    _activeTimer?.cancel();
-
     final now = DateTime.now();
     var scheduledDate = DateTime(now.year, now.month, now.day, _selectedTime.hour, _selectedTime.minute);
     
@@ -52,23 +49,19 @@ class _ScheduleBottomSheetState extends State<ScheduleBottomSheet> {
     final telemetry = context.read<TelemetryProvider>();
     final actionStr = _turnOn ? 'ON' : 'OFF';
 
-    _activeTimer = Timer(duration, () {
-      if (_turnOn) {
-        telemetry.turnOn();
-      } else {
-        telemetry.turnOff();
-      }
-      setState(() {
-        _statusMessage = null;
-      });
-    });
+    // Set schedule on the device
+    telemetry.setDeviceSchedule(duration.inSeconds, _turnOn);
 
     setState(() {
-      _statusMessage = 'Device will turn $actionStr at ${_selectedTime.format(context)}';
+      _statusMessage = 'Device scheduled to turn $actionStr at ${_selectedTime.format(context)}';
     });
     
     Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_statusMessage!), backgroundColor: const Color(0xFF1565C0)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(_statusMessage!), 
+      backgroundColor: const Color(0xFF1565C0),
+      duration: const Duration(seconds: 4),
+    ));
   }
 
   @override

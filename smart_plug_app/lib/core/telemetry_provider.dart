@@ -259,6 +259,30 @@ class TelemetryProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setDeviceSchedule(int seconds, bool turnOnAction) async {
+    _isLoading = true;
+    notifyListeners();
+
+    final actionStr = turnOnAction ? 'ON' : 'OFF';
+    // Format: backlog delay_s <seconds>; Power <ON/OFF>
+    final command = 'backlog delay_s $seconds; Power $actionStr';
+
+    if (connectionManager.currentMode == ConnectionMode.local) {
+      await _apiService.sendRawCommand(command);
+    } else if (connectionManager.currentMode == ConnectionMode.remote) {
+      _mqttService.publishCommand(command);
+    }
+
+    // Give some time for the device to process before fetching state
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (connectionManager.currentMode == ConnectionMode.local) {
+      await _fetchLocalData();
+    }
+
+    _isLoading = false;
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     connectionManager.removeListener(_onConnectionChanged);

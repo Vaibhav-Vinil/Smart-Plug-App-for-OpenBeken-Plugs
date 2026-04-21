@@ -63,6 +63,11 @@ class ApiService {
   Future<bool> turnOff() async => _sendCommand('Power%20Off');
   Future<bool> turnOn() async => _sendCommand('Power%20On');
 
+  Future<bool> sendRawCommand(String cmd) async {
+    // Ensure the command is URL encoded for the 'cmnd' parameter
+    return _sendCommand(Uri.encodeComponent(cmd));
+  }
+
   Future<bool> _sendCommand(String cmd) async {
     try {
       final response = await http.get(Uri.parse('$_baseUrl/cm?cmnd=$cmd')).timeout(const Duration(seconds: 5));
@@ -72,4 +77,5 @@ class ApiService {
       return false;
     }
   }
+
 }
