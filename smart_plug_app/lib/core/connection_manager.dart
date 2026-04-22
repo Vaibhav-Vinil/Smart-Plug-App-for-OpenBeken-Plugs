@@ -6,7 +6,7 @@ import 'package:network_info_plus/network_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'settings_service.dart';
 
-enum ConnectionMode { local, remote, offline }
+enum ConnectionMode { local, remote, offline, global }
 
 class ConnectionManager extends ChangeNotifier {
   final SettingsService settingsService;
@@ -48,6 +48,13 @@ class ConnectionManager extends ChangeNotifier {
   }
 
   Future<void> _updateConnectionStatus(List<ConnectivityResult> results) async {
+    if (settingsService.isGlobalModeEnabled) {
+      _currentMode = ConnectionMode.global;
+      _currentSsid = null;
+      notifyListeners();
+      return;
+    }
+
     if (results.contains(ConnectivityResult.none)) {
       _currentMode = ConnectionMode.offline;
       _currentSsid = null;

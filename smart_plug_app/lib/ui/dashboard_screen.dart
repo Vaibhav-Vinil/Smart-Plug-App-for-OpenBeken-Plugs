@@ -52,7 +52,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        title: const ConnectionBadge(),
         actions: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Switch(
+                value: context.watch<SettingsService>().isGlobalModeEnabled,
+                onChanged: (val) => context.read<SettingsService>().setGlobalMode(val),
+                activeColor: Colors.purple,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.add_circle_outline, color: Color(0xFF1565C0)),
             onPressed: () => Navigator.of(context).pushNamed('/setup'),
@@ -78,10 +90,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ],
           ),
-          const Padding(
-            padding: EdgeInsets.only(right: 16.0),
-            child: Center(child: ConnectionBadge()),
-          )
+          const SizedBox(width: 4),
         ],
       ),
       body: Consumer<TelemetryProvider>(
@@ -151,20 +160,43 @@ class ConnectionBadge extends StatelessWidget {
     return Consumer<ConnectionManager>(
       builder: (context, manager, child) {
         final isLocal = manager.currentMode == ConnectionMode.local;
+        final isGlobal = manager.currentMode == ConnectionMode.global;
+        
+        Color badgeColor;
+        IconData badgeIcon;
+        String badgeText;
+        
+        if (isGlobal) {
+          badgeColor = Colors.purple;
+          badgeIcon = Icons.public;
+          badgeText = 'Global Bridge Active';
+        } else if (isLocal) {
+          badgeColor = Colors.green;
+          badgeIcon = Icons.wifi;
+          badgeText = 'Local';
+        } else {
+          badgeColor = Colors.blue;
+          badgeIcon = Icons.cloud;
+          badgeText = 'Cloud';
+        }
+
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: isLocal ? Colors.green.withValues(alpha: 0.1) : Colors.blue.withValues(alpha: 0.1),
+            color: badgeColor.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(20),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(isLocal ? Icons.wifi : Icons.cloud, size: 14, color: isLocal ? Colors.green : Colors.blue),
+              Icon(badgeIcon, size: 14, color: badgeColor),
               const SizedBox(width: 6),
-              Text(
-                isLocal ? 'Local' : 'Cloud',
-                style: TextStyle(color: isLocal ? Colors.green : Colors.blue, fontWeight: FontWeight.w700, fontSize: 12),
+              Flexible(
+                child: Text(
+                  badgeText,
+                  style: TextStyle(color: badgeColor, fontWeight: FontWeight.w700, fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),

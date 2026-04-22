@@ -8,6 +8,7 @@ class SettingsService extends ChangeNotifier {
   static const String _keyMqttUser = 'mqtt_username';
   static const String _keyMqttPass = 'mqtt_password';
   static const String _keyIsSetupComplete = 'is_setup_complete';
+  static const String _keyIsGlobalModeEnabled = 'is_global_mode_enabled';
 
   final SharedPreferences _prefs;
 
@@ -19,6 +20,7 @@ class SettingsService extends ChangeNotifier {
   String get mqttUsername => _prefs.getString(_keyMqttUser) ?? 'admin';
   String get mqttPassword => _prefs.getString(_keyMqttPass) ?? 'password';
   bool get isSetupComplete => _prefs.getBool(_keyIsSetupComplete) ?? false;
+  bool get isGlobalModeEnabled => _prefs.getBool(_keyIsGlobalModeEnabled) ?? false;
 
   Future<void> setPlugIpAddress(String value) async {
     await _prefs.setString(_keyPlugIp, value);
@@ -43,6 +45,11 @@ class SettingsService extends ChangeNotifier {
 
   Future<void> setSetupComplete(bool value) async {
     await _prefs.setBool(_keyIsSetupComplete, value);
+    notifyListeners();
+  }
+
+  Future<void> setGlobalMode(bool value) async {
+    await _prefs.setBool(_keyIsGlobalModeEnabled, value);
     notifyListeners();
   }
 
