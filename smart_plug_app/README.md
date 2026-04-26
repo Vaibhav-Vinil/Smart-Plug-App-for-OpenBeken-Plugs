@@ -2,6 +2,10 @@ Run these in terminals
 C:\Users\Vaibhav> mosquitto -c local.conf -v
 PS C:\Users\Vaibhav> cloudflared tunnel --url http://localhost:9001
 PS C:\Users\Vaibhav\Desktop\BKH\smart_plug_app> flutter run
+Make change to line 244
+
+Access the plug here locally
+http://192.168.1.106/index
 
 # smart_plug_app
 

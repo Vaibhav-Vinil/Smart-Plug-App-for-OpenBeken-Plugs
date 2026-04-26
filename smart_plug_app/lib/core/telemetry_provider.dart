@@ -241,7 +241,7 @@ class TelemetryProvider extends ChangeNotifier {
     final isGlobal = connectionManager.currentMode == ConnectionMode.global;
     // edit thisfor cloudfare
     final host = isGlobal
-        ? 'wss://gives-bucks-dover-ent.trycloudflare.com/mqtt'
+        ? 'wss://kennedy-birds-copyrighted-cornell.trycloudflare.com/mqtt'
         : settingsService.mqttBrokerHost;
     final port = isGlobal ? 443 : SecretConfig.mqttBrokerPort;
 
