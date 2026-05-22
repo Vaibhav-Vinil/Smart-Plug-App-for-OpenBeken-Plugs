@@ -10,6 +10,7 @@ import 'widgets/telemetry_cards.dart';
 import 'widgets/schedule_bottom_sheet.dart';
 import 'widgets/smart_tile.dart';
 import 'widgets/device_health.dart';
+import 'widgets/daily_energy_chart.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -95,7 +96,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       body: Consumer<TelemetryProvider>(
         builder: (context, provider, child) {
-          if (provider.isDisconnected && provider.data.power == 0 && provider.data.voltage == 0) {
+          if (!provider.hasLiveData && provider.isDisconnected) {
             return const _LoadingShimmer();
           }
 
@@ -133,12 +134,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const TelemetryCards(),
                 const SizedBox(height: 32),
                 
-                const Text(
-                  'Usage History',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Usage History',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                    ),
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: ['5M', '1H', '24H', '7D'].map((range) {
+                            final isSelected = provider.selectedRange == range.toLowerCase();
+                            return Padding(
+                              padding: const EdgeInsets.only(left: 8.0),
+                              child: ChoiceChip(
+                                label: Text(range, style: TextStyle(fontSize: 10, color: isSelected ? Colors.white : Colors.black54)),
+                                selected: isSelected,
+                                onSelected: (selected) {
+                                  if (selected) {
+                                    provider.updateHistoryRange(range.toLowerCase());
+                                  }
+                                },
+                                selectedColor: const Color(0xFF1565C0),
+                                backgroundColor: Colors.white,
+                                padding: EdgeInsets.zero,
+                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 const _SmoothLineChart(),
+                const SizedBox(height: 16),
+                const DailyEnergyChart(),
                 const SizedBox(height: 32),
 
                 const DeviceHealthSection(),
@@ -277,77 +312,148 @@ class _SmoothLineChart extends StatelessWidget {
         if (history.isEmpty) {
           return const SmartTile(
             child: SizedBox(
-              height: 180,
+              height: 300,
               child: Center(child: Text('Gathering data...', style: TextStyle(color: Colors.black45))),
             ),
           );
         }
 
-        List<FlSpot> spots = [];
-        for (int i = 0; i < history.length; i++) {
-          spots.add(FlSpot(i.toDouble(), history[i]));
+        final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
+        double minX;
+        if (provider.selectedRange == '5m') {
+          minX = now - 300;
+        } else if (provider.selectedRange == '1h') {
+          minX = now - 3600;
+        } else if (provider.selectedRange == '24h') {
+          minX = now - 86400;
+        } else if (provider.selectedRange == '7d') {
+          minX = now - (7 * 86400);
+        } else {
+          minX = now - 3600;
         }
 
-        double maxY = history.reduce((curr, next) => curr > next ? curr : next) * 1.5;
+        List<FlSpot> spots = history.map((e) => FlSpot(e.key, e.value)).toList();
+        
+        // Sort by X (timestamp) to prevent zig-zagging "back and forth" lines
+        spots.sort((a, b) => a.x.compareTo(b.x));
+        
+        // Only keep spots within the window for the line chart display
+        spots = spots.where((s) => s.x >= minX).toList();
+
+        double maxY = 10;
+        if (spots.isNotEmpty) {
+          maxY = spots.map((s) => s.y).reduce((curr, next) => curr > next ? curr : next) * 1.5;
+        }
         if (maxY < 10) maxY = 10;
+
+        // Wider chart for better scrolling: 
+        // 5M view = 5 screens wide, 1H view = 3 screens wide, etc.
+        double chartWidth;
+        if (provider.selectedRange == '5m') {
+          chartWidth = (MediaQuery.of(context).size.width - 48) * 5;
+        } else if (provider.selectedRange == '1h') {
+          chartWidth = (MediaQuery.of(context).size.width - 48) * 3;
+        } else if (provider.selectedRange == '24h') {
+          chartWidth = (MediaQuery.of(context).size.width - 48) * 6;
+        } else {
+          chartWidth = (MediaQuery.of(context).size.width - 48) * 12;
+        }
 
         return SmartTile(
           padding: const EdgeInsets.only(top: 32, bottom: 0, left: 0, right: 0),
           child: SizedBox(
-            height: 180,
-            child: LineChart(
-              LineChartData(
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  drawHorizontalLine: true,
-                  getDrawingHorizontalLine: (val) => FlLine(color: Colors.black.withValues(alpha: 0.05), strokeWidth: 1),
-                ),
-                titlesData: FlTitlesData(
-                  show: true,
-                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 22,
-                      getTitlesWidget: (value, meta) {
-                        return Container(); // Keep generic empty ticks
-                      },
-                    ),
-                  ),
-                ),
-                borderData: FlBorderData(
-                  show: true,
-                  border: Border(bottom: BorderSide(color: Colors.black.withValues(alpha: 0.1), width: 1)),
-                ),
-                minX: 0,
-                maxX: spots.length.toDouble() > 50 ? spots.length.toDouble() : 50,
-                minY: 0,
-                maxY: maxY,
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: spots,
-                    isCurved: true,
-                    color: const Color(0xFF1565C0),
-                    barWidth: 3,
-                    isStrokeCapRound: true,
-                    dotData: FlDotData(show: false),
-                    shadow: Shadow(color: const Color(0xFF1565C0).withValues(alpha: 0.2), blurRadius: 4, offset: const Offset(0, 4)),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFF1565C0).withValues(alpha: 0.2),
-                          const Color(0xFF1565C0).withValues(alpha: 0.0),
-                        ],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
+            height: 300,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              reverse: true, // Start at the current time (right side)
+              child: Padding(
+                padding: const EdgeInsets.only(right: 24, left: 12), // Extra space for labels
+                child: SizedBox(
+                  width: chartWidth,
+                  child: LineChart(
+                    LineChartData(
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: true,
+                        drawHorizontalLine: true,
+                        getDrawingHorizontalLine: (val) => FlLine(color: Colors.black.withValues(alpha: 0.05), strokeWidth: 1),
+                        getDrawingVerticalLine: (val) => FlLine(color: Colors.black.withValues(alpha: 0.05), strokeWidth: 1),
                       ),
+                      titlesData: FlTitlesData(
+                        show: true,
+                        rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 45,
+                            getTitlesWidget: (value, meta) {
+                              if (value == 0) return const Text('');
+                              return Text('${value.toInt()}W', style: const TextStyle(color: Colors.black26, fontSize: 10));
+                            },
+                          ),
+                        ),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 30,
+                            interval: (now - minX) / 12, // 12 labels across the scrollable area
+                            getTitlesWidget: (value, meta) {
+                              final date = DateTime.fromMillisecondsSinceEpoch((value * 1000).toInt());
+                              String label;
+                              if (provider.selectedRange == '5m') {
+                                label = '${date.hour}:${date.minute.toString().padLeft(2, '0')}:${date.second.toString().padLeft(2, '0')}';
+                              } else if (provider.selectedRange == '1h') {
+                                label = '${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+                              } else if (provider.selectedRange == '24h') {
+                                label = '${date.hour}:00';
+                              } else {
+                                label = '${date.day}/${date.month}';
+                              }
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 8.0),
+                                child: Text(label, style: const TextStyle(color: Colors.black26, fontSize: 10)),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      borderData: FlBorderData(
+                        show: true,
+                        border: Border(
+                          bottom: BorderSide(color: Colors.black.withValues(alpha: 0.1), width: 1),
+                          left: BorderSide(color: Colors.black.withValues(alpha: 0.1), width: 1),
+                        ),
+                      ),
+                      minX: minX,
+                      maxX: now,
+                      minY: 0,
+                      maxY: maxY,
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: spots,
+                          isCurved: true,
+                          color: const Color(0xFF1565C0),
+                          barWidth: 3,
+                          isStrokeCapRound: true,
+                          dotData: FlDotData(show: false),
+                          shadow: Shadow(color: const Color(0xFF1565C0).withValues(alpha: 0.2), blurRadius: 4, offset: const Offset(0, 4)),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            gradient: LinearGradient(
+                              colors: [
+                                const Color(0xFF1565C0).withValues(alpha: 0.2),
+                                const Color(0xFF1565C0).withValues(alpha: 0.0),
+                              ],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ),
             ),
           ),

@@ -59,22 +59,25 @@ class ApiService {
     }
   }
 
-  Future<bool> togglePower() async => _sendCommand('Power%20Toggle');
-  Future<bool> turnOff() async => _sendCommand('Power%20Off');
-  Future<bool> turnOn() async => _sendCommand('Power%20On');
+  Future<bool> togglePower() async => (await _sendCommand('Power%20Toggle')) != null;
+  Future<bool> turnOff() async => (await _sendCommand('Power%20Off')) != null;
+  Future<bool> turnOn() async => (await _sendCommand('Power%20On')) != null;
 
-  Future<bool> sendRawCommand(String cmd) async {
+  Future<String?> sendRawCommand(String cmd) async {
     // Ensure the command is URL encoded for the 'cmnd' parameter
     return _sendCommand(Uri.encodeComponent(cmd));
   }
 
-  Future<bool> _sendCommand(String cmd) async {
+  Future<String?> _sendCommand(String cmd) async {
     try {
       final response = await http.get(Uri.parse('$_baseUrl/cm?cmnd=$cmd')).timeout(const Duration(seconds: 5));
-      return response.statusCode == 200;
+      if (response.statusCode == 200) {
+        return response.body;
+      }
+      return null;
     } catch (e) {
       debugPrint('HTTP Command Error: $e');
-      return false;
+      return null;
     }
   }
 

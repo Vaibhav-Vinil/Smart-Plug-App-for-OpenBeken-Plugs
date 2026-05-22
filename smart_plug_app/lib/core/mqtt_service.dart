@@ -6,7 +6,10 @@ import 'config.dart';
 
 class MqttService {
   MqttServerClient? _client;
-  Function(Map<String, dynamic>)? onTelemetryReceived;
+  Function(String topic, String payload)? onTelemetryReceived;
+
+  bool get isConnected =>
+      _client?.connectionStatus?.state == MqttConnectionState.connected;
 
   Future<bool> connect({
     required String host,
@@ -51,13 +54,10 @@ class MqttService {
       _client!.updates!.listen((List<MqttReceivedMessage<MqttMessage>> c) {
         final recMess = c[0].payload as MqttPublishMessage;
         final pt = MqttPublishPayload.bytesToStringAsString(recMess.payload.message);
-        try {
-          final data = json.decode(pt);
-          if (onTelemetryReceived != null) {
-            onTelemetryReceived!(data);
-          }
-        } catch (e) {
-          debugPrint('MQTT Payload Parsing Error: $e');
+        final topic = c[0].topic;
+        
+        if (onTelemetryReceived != null) {
+          onTelemetryReceived!(topic, pt);
         }
       });
       return true;

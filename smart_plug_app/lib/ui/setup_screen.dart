@@ -126,10 +126,19 @@ class _SetupScreenState extends State<SetupScreen> {
 
   Future<void> _finishSetup() async {
     final settings = context.read<SettingsService>();
-    final ssid = _ssidController.text.isNotEmpty ? _ssidController.text : settings.localSsid;
-    
+    final connection = context.read<ConnectionManager>();
+
+    // Prefer the WiFi network the phone is on so local mode routing works.
+    String ssid = _ssidController.text.isNotEmpty
+        ? _ssidController.text
+        : settings.localSsid;
+    final activeSsid = connection.currentSsid?.replaceAll('"', '');
+    if (activeSsid != null && activeSsid.isNotEmpty) {
+      ssid = activeSsid;
+    }
+
     await settings.saveSettings(
-      ip: _ipController.text,
+      ip: _ipController.text.trim(),
       ssid: ssid,
     );
     await settings.setSetupComplete(true);
@@ -447,7 +456,7 @@ class _SetupScreenState extends State<SetupScreen> {
         children: [
           TextField(
             controller: _ipController,
-            decoration: const InputDecoration(labelText: 'Device IP (e.g. 192.168.1.106)', border: OutlineInputBorder()),
+            decoration: const InputDecoration(labelText: 'Device IP (e.g. 10.30.96.227)', border: OutlineInputBorder()),
             keyboardType: TextInputType.number,
           ),
           const SizedBox(height: 20),

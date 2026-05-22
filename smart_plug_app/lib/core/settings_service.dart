@@ -14,8 +14,8 @@ class SettingsService extends ChangeNotifier {
 
   SettingsService(this._prefs);
 
-  String get plugIpAddress => _prefs.getString(_keyPlugIp) ?? '192.168.1.106';
-  String get localSsid => _prefs.getString(_keyLocalSsid) ?? 'Arnav2011-EXT';
+  String get plugIpAddress => _prefs.getString(_keyPlugIp) ?? '10.30.96.227';
+  String get localSsid => _prefs.getString(_keyLocalSsid) ?? 'test-IOT';
   String get mqttBrokerHost => _prefs.getString(_keyMqttHost) ?? '192.168.0.99';
   String get mqttUsername => _prefs.getString(_keyMqttUser) ?? 'admin';
   String get mqttPassword => _prefs.getString(_keyMqttPass) ?? 'password';

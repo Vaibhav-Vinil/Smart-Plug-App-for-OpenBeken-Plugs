@@ -62,16 +62,22 @@ class ConnectionManager extends ChangeNotifier {
       try {
         _currentSsid = await _networkInfo.getWifiName();
         final ssid = _currentSsid?.replaceAll('"', '');
-        
-        // Use SSID from SettingsService
-        if (ssid == settingsService.localSsid || ssid == 'AndroidWifi') {
+
+        // Prefer direct HTTP to the plug when on WiFi. SSID matching alone breaks
+        // manual-IP setup (saved SSID often differs from the active network).
+        final onHomeWifi =
+            ssid == settingsService.localSsid || ssid == 'AndroidWifi';
+        if (onHomeWifi || settingsService.isSetupComplete) {
           _currentMode = ConnectionMode.local;
         } else {
           _currentMode = ConnectionMode.remote;
         }
       } catch (e) {
         debugPrint('Error getting WiFi name: $e');
-        _currentMode = ConnectionMode.remote;
+        // If SSID is unavailable but setup is done, still try local HTTP.
+        _currentMode = settingsService.isSetupComplete
+            ? ConnectionMode.local
+            : ConnectionMode.remote;
       }
     } else {
       _currentMode = ConnectionMode.remote;

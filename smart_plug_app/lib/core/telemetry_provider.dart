@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'connection_manager.dart';
 import 'api_service.dart';
 import 'mqtt_service.dart';
@@ -13,6 +15,9 @@ class TelemetryData {
   double power;
   double energyTotal;
   double energyToday;
+  double energyYesterday;
+  double energy2DaysAgo;
+  double energy3DaysAgo;
   double chipTemp;
   int rssi;
   bool isRelayOn;
@@ -23,6 +28,9 @@ class TelemetryData {
     this.power = 0.0,
     this.energyTotal = 0.0,
     this.energyToday = 0.0,
+    this.energyYesterday = 0.0,
+    this.energy2DaysAgo = 0.0,
+    this.energy3DaysAgo = 0.0,
     this.chipTemp = 0.0,
     this.rssi = 0,
     this.isRelayOn = false,
@@ -87,6 +95,9 @@ class TelemetryData {
         getDbl(energy, 'Total', getDbl(json, 'EnergyTotal')),
       ),
       energyToday: getDbl(energy, 'Today', getDbl(json, 'EnergyToday')),
+      energyYesterday: getDbl(energy, 'Yesterday', getDbl(json, 'EnergyYesterday')),
+      energy2DaysAgo: getDbl(json, 'Energy2DaysAgo'),
+      energy3DaysAgo: getDbl(json, 'Energy3DaysAgo'),
       chipTemp: chipTemp,
       rssi: getDbl(wifi, 'RSSI', getDbl(json, 'RSSI')).toInt(),
       isRelayOn:
@@ -119,6 +130,9 @@ class TelemetryProvider extends ChangeNotifier {
   bool _isDisconnected = true;
   bool get isDisconnected => _isDisconnected;
 
+  bool _hasLiveData = false;
+  bool get hasLiveData => _hasLiveData;
+
   // Fallback: If "dubai-plug-test-123/1/set" doesn't work, try "dubai-plug-test-123/cmnd/POWER"
   String get activePublishTopic =>
       connectionManager.currentMode == ConnectionMode.global
@@ -134,8 +148,12 @@ class TelemetryProvider extends ChangeNotifier {
   String macAddress = 'Unknown';
   String ipAddress = 'Unknown';
 
-  final List<double> powerHistory = [];
+  final List<MapEntry<double, double>> powerHistory = [];
+  String _selectedRange = '1h';
+  String get selectedRange => _selectedRange;
+
   Timer? _pollingTimer;
+  static const String _historyKey = 'power_history_v2';
 
   TelemetryProvider(
     this.connectionManager,
@@ -146,7 +164,47 @@ class TelemetryProvider extends ChangeNotifier {
     connectionManager.addListener(_onConnectionChanged);
     settingsService.addListener(_onSettingsChanged);
     _mqttService.onTelemetryReceived = _onMqttDataReceived;
+    _loadHistory();
     _onConnectionChanged();
+  }
+
+  void updateHistoryRange(String range) {
+    _selectedRange = range;
+    if (_mqttService.isConnected && connectionManager.currentMode == ConnectionMode.global) {
+      _mqttService.publishCommand(json.encode({'range': range}), topic: 'dubai-plug-test-123/history/req');
+    }
+    notifyListeners();
+  }
+
+  Future<void> _loadHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getStringList(_historyKey);
+      if (saved != null) {
+        powerHistory.clear();
+        for (var s in saved) {
+          final parts = s.split(':');
+          if (parts.length == 2) {
+            powerHistory.add(MapEntry(double.tryParse(parts[0]) ?? 0.0, double.tryParse(parts[1]) ?? 0.0));
+          }
+        }
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error loading history: $e');
+    }
+  }
+
+  Future<void> _saveHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        _historyKey,
+        powerHistory.map((e) => '${e.key}:${e.value}').toList(),
+      );
+    } catch (e) {
+      debugPrint('Error saving history: $e');
+    }
   }
 
   void _onSettingsChanged() {
@@ -155,21 +213,22 @@ class TelemetryProvider extends ChangeNotifier {
     // If setup is no longer complete (device deleted), clear stale data
     if (!settingsService.isSetupComplete) {
       resetData();
+      return;
     }
 
-    if (connectionManager.currentMode == ConnectionMode.remote ||
-        connectionManager.currentMode == ConnectionMode.global) {
-      _startMqttConnection();
-    }
+    // Re-bind polling/MQTT when IP or connection mode changes after setup.
+    _onConnectionChanged();
   }
 
   void resetData() {
     _data = TelemetryData();
     powerHistory.clear();
+    _saveHistory();
     firmwareVersion = 'Unknown';
     macAddress = 'Unknown';
     ipAddress = 'Unknown';
     _isDisconnected = true;
+    _hasLiveData = false;
     notifyListeners();
   }
 
@@ -181,7 +240,25 @@ class TelemetryProvider extends ChangeNotifier {
     } else if (connectionManager.currentMode == ConnectionMode.remote ||
         connectionManager.currentMode == ConnectionMode.global) {
       _startMqttConnection();
+      if (connectionManager.currentMode == ConnectionMode.global) {
+        _startMqttPolling();
+      }
     }
+  }
+
+  void _startMqttPolling() {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (_mqttService.isConnected) {
+        // Request energy counters
+        _mqttService.publishCommand('', topic: 'dubai-plug-test-123/energycounter_today/get');
+        _mqttService.publishCommand('', topic: 'dubai-plug-test-123/energycounter_yesterday/get');
+        _mqttService.publishCommand('', topic: 'dubai-plug-test-123/energycounter_2_days_ago/get');
+        _mqttService.publishCommand('', topic: 'dubai-plug-test-123/energycounter_3_days_ago/get');
+        // Request live power
+        _mqttService.publishCommand('', topic: 'dubai-plug-test-123/power/get');
+        _mqttService.publishCommand('', topic: 'dubai-plug-test-123/voltage/get');
+      }
+    });
   }
 
   void _startLocalPolling() {
@@ -196,7 +273,26 @@ class TelemetryProvider extends ChangeNotifier {
     final jsonData = await _apiService.fetchStatus();
     if (jsonData != null) {
       _isDisconnected = false;
+      _hasLiveData = true;
       _data = TelemetryData.fromJson(jsonData);
+
+      // Fetch extra energy history if not in StatusSNS (common in some OpenBeken versions)
+      if (_data.energyYesterday == 0) {
+        final yestStr = await _apiService.sendRawCommand('energycounter_yesterday');
+        if (yestStr != null) {
+          _data.energyYesterday = double.tryParse(yestStr) ?? 0.0;
+        }
+        
+        final d2Str = await _apiService.sendRawCommand('energycounter_2_days_ago');
+        if (d2Str != null) {
+          _data.energy2DaysAgo = double.tryParse(d2Str) ?? 0.0;
+        }
+        
+        final d3Str = await _apiService.sendRawCommand('energycounter_3_days_ago');
+        if (d3Str != null) {
+          _data.energy3DaysAgo = double.tryParse(d3Str) ?? 0.0;
+        }
+      }
 
       if (jsonData.containsKey('StatusNET')) {
         macAddress = jsonData['StatusNET']['Mac'] ?? macAddress;
@@ -241,9 +337,12 @@ class TelemetryProvider extends ChangeNotifier {
     final isGlobal = connectionManager.currentMode == ConnectionMode.global;
     // edit thisfor cloudfare
     final host = isGlobal
-        ? 'wss://kennedy-birds-copyrighted-cornell.trycloudflare.com/mqtt'
+        ? 'wss://sic-respond-offset-developments.trycloudflare.com/mqtt'
         : settingsService.mqttBrokerHost;
     final port = isGlobal ? 443 : SecretConfig.mqttBrokerPort;
+
+    // Use wildcard for global mode to catch energy counters
+    final subTopic = isGlobal ? "dubai-plug-test-123/#" : activeSubscribeTopic;
 
     final connected = await _mqttService.connect(
       host: host,
@@ -253,24 +352,70 @@ class TelemetryProvider extends ChangeNotifier {
       port: port,
       secure:
           false, // CRITICAL: must be false for WebSockets in mqtt_client, wss:// handles security
-      subscribeTopic: activeSubscribeTopic,
+      subscribeTopic: subTopic,
     );
+
+    if (connected && isGlobal) {
+      // Request history from the Python recorder
+      _mqttService.publishCommand(json.encode({'range': _selectedRange}), topic: 'dubai-plug-test-123/history/req');
+    }
+
     _isDisconnected = !connected;
     notifyListeners();
   }
 
-  void _onMqttDataReceived(Map<String, dynamic> jsonData) {
+  void _onMqttDataReceived(String topic, String payload) {
     _isDisconnected = false;
-    _data = TelemetryData.fromJson(jsonData);
-    _updateHistory(_data.power);
-    notifyListeners();
+    _hasLiveData = true;
+    debugPrint('MQTT Received: $topic -> $payload');
+    
+    try {
+      if (topic == 'dubai-plug-test-123/history/res') {
+        final List<dynamic> bulk = json.decode(payload);
+        powerHistory.clear();
+        for (var item in bulk) {
+          if (item is List && item.length == 2) {
+            powerHistory.add(MapEntry((item[0] as num).toDouble(), (item[1] as num).toDouble()));
+          }
+        }
+        _saveHistory();
+        debugPrint('Loaded ${powerHistory.length} history points from recorder');
+      } else if (topic.endsWith('/state') || topic.endsWith('/tele/SENSOR')) {
+        final data = json.decode(payload);
+        _data = TelemetryData.fromJson(data);
+        _updateHistory(_data.power);
+      } else if (topic.contains('voltage')) {
+        _data.voltage = double.tryParse(payload) ?? _data.voltage;
+      } else if (topic.contains('current')) {
+        _data.current = double.tryParse(payload) ?? _data.current;
+      } else if (topic.contains('power') && !topic.contains('power_')) {
+        // Match "power" or "power/get" but not "power_factor"
+        _data.power = double.tryParse(payload) ?? _data.power;
+        _updateHistory(_data.power);
+      } else if (topic.contains('energycounter_today')) {
+        _data.energyToday = double.tryParse(payload) ?? _data.energyToday;
+      } else if (topic.contains('energycounter_yesterday')) {
+        _data.energyYesterday = double.tryParse(payload) ?? _data.energyYesterday;
+      } else if (topic.contains('energycounter_2_days_ago')) {
+        _data.energy2DaysAgo = double.tryParse(payload) ?? _data.energy2DaysAgo;
+      } else if (topic.contains('energycounter_3_days_ago')) {
+        _data.energy3DaysAgo = double.tryParse(payload) ?? _data.energy3DaysAgo;
+      } else if (topic.endsWith('/1/get') || topic.endsWith('/1/state') || topic.endsWith('/POWER')) {
+        // Relay state
+        _data.isRelayOn = payload == '1' || payload == 'ON';
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error parsing MQTT data: $e');
+    }
   }
 
   void _updateHistory(double power) {
-    powerHistory.add(power);
-    if (powerHistory.length > 50) {
+    powerHistory.add(MapEntry(DateTime.now().millisecondsSinceEpoch / 1000.0, power));
+    if (powerHistory.length > 1000) {
       powerHistory.removeAt(0);
     }
+    _saveHistory();
   }
 
   Future<void> togglePower() async {

@@ -4,6 +4,8 @@ PS C:\Users\Vaibhav> cloudflared tunnel --url http://localhost:9001
 PS C:\Users\Vaibhav\Desktop\BKH\smart_plug_app> flutter run
 Make change to line 244
 
+PS C:\Users\Vaibhav> python c:\Users\Vaibhav\Desktop\BKH\mqtt_recorder.py
+
 Access the plug here locally
 http://192.168.1.106/index
 
