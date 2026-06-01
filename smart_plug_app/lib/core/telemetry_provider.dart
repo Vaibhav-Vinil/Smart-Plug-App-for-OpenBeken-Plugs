@@ -463,9 +463,12 @@ class TelemetryProvider extends ChangeNotifier {
         _data.energy2DaysAgo = double.tryParse(payload) ?? _data.energy2DaysAgo;
       } else if (topic.contains('energycounter_3_days_ago')) {
         _data.energy3DaysAgo = double.tryParse(payload) ?? _data.energy3DaysAgo;
-      } else if (topic.endsWith('/1/get') || topic.endsWith('/1/state') || topic.endsWith('/POWER')) {
-        // Relay state
-        _data.isRelayOn = payload == '1' || payload == 'ON';
+      } else if (topic.endsWith('/1/get') ||
+          topic.endsWith('/1/state') ||
+          topic.endsWith('/POWER/get') ||
+          topic.endsWith('/POWER')) {
+        final p = payload.trim().toUpperCase();
+        _data.isRelayOn = p == '1' || p == 'ON';
       }
       notifyListeners();
     } catch (e) {
@@ -492,9 +495,8 @@ class TelemetryProvider extends ChangeNotifier {
     } else if (connectionManager.currentMode == ConnectionMode.remote) {
       _mqttService.publishCommand('toggle', topic: activePublishTopic);
     } else if (connectionManager.currentMode == ConnectionMode.global) {
-        final payload = _data.isRelayOn ? '0' : '1';
-        _data.isRelayOn = !_data.isRelayOn; // Optimistic update
-        _mqttService.publishCommand(payload, topic: activePublishTopic);
+      _data.isRelayOn = !_data.isRelayOn;
+      _mqttService.publishCommand('toggle', topic: activePublishTopic);
     }
 
     _isLoading = false;
@@ -512,8 +514,8 @@ class TelemetryProvider extends ChangeNotifier {
     } else if (connectionManager.currentMode == ConnectionMode.remote) {
       _mqttService.turnOff(topic: activePublishTopic);
     } else if (connectionManager.currentMode == ConnectionMode.global) {
-        _data.isRelayOn = false; // Optimistic update
-        _mqttService.publishCommand('0', topic: activePublishTopic);
+      _data.isRelayOn = false;
+      _mqttService.publishCommand('off', topic: activePublishTopic);
     }
 
     _isLoading = false;
@@ -531,8 +533,8 @@ class TelemetryProvider extends ChangeNotifier {
     } else if (connectionManager.currentMode == ConnectionMode.remote) {
       _mqttService.publishCommand('on', topic: activePublishTopic);
     } else if (connectionManager.currentMode == ConnectionMode.global) {
-        _data.isRelayOn = true; // Optimistic update
-        _mqttService.publishCommand('1', topic: activePublishTopic);
+      _data.isRelayOn = true;
+      _mqttService.publishCommand('on', topic: activePublishTopic);
     }
 
     _isLoading = false;

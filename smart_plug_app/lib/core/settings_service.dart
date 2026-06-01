@@ -45,7 +45,7 @@ class SettingsService extends ChangeNotifier {
 
   bool get canUseGlobalMode => hasGlobalBridge && hasMqttTopicPrefix;
 
-  /// Builds `prefix/suffix` when a prefix is configured; otherwise returns [suffix].
+  /// OpenBeken telemetry channel, e.g. `dubai-plug-test-123/power/get`.
   String mqttTopic(String suffix) {
     final p = mqttTopicPrefix;
     if (p.isEmpty) return suffix;
@@ -53,20 +53,30 @@ class SettingsService extends ChangeNotifier {
     return '$p/$s';
   }
 
+  /// OpenBeken command topic, e.g. `cmnd/dubai-plug-test-123/POWER`.
+  String openBekenCmnd(String command) {
+    final cmd = command.startsWith('/') ? command.substring(1) : command;
+    if (!hasMqttTopicPrefix) return 'cmnd/$cmd';
+    return 'cmnd/$mqttTopicPrefix/$cmd';
+  }
+
+  /// Wildcard subscription for all plug channels (`…/#`).
+  String get _openBekenSubscribeWildcard =>
+      hasMqttTopicPrefix ? '$mqttTopicPrefix/#' : '';
+
   String get mqttPublishTopicRemote {
     if (mqttPublishTopicOverride.isNotEmpty) return mqttPublishTopicOverride;
-    if (hasMqttTopicPrefix) return mqttTopic('cmnd/POWER');
+    if (hasMqttTopicPrefix) return openBekenCmnd('POWER');
     return '';
   }
 
   String get mqttSubscribeTopicRemote {
     if (mqttSubscribeTopicOverride.isNotEmpty) return mqttSubscribeTopicOverride;
-    if (hasMqttTopicPrefix) return mqttTopic('stat/RESULT');
-    return '';
+    return _openBekenSubscribeWildcard;
   }
 
-  String get mqttPublishTopicGlobal => mqttTopic('cmnd/POWER');
-  String get mqttSubscribeTopicGlobal => mqttTopic('stat/POWER');
+  String get mqttPublishTopicGlobal => mqttPublishTopicRemote;
+  String get mqttSubscribeTopicGlobal => mqttSubscribeTopicRemote;
   String get mqttHistoryRequestTopic => mqttTopic('history/req');
   String get mqttHistoryResponseTopic => mqttTopic('history/res');
 
