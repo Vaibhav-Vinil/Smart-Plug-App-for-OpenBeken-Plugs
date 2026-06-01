@@ -1,12 +1,13 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
-import 'config.dart';
+import 'device_defaults.dart';
 
 class MqttService {
   MqttServerClient? _client;
   Function(String topic, String payload)? onTelemetryReceived;
+
+  String? _defaultPublishTopic;
 
   bool get isConnected =>
       _client?.connectionStatus?.state == MqttConnectionState.connected;
@@ -16,15 +17,25 @@ class MqttService {
     required String username,
     required String password,
     bool useWebSocket = false,
-    int port = 1883,
+    int port = DeviceDefaults.mqttTcpPort,
     bool secure = false,
-    String? subscribeTopic,
+    required String subscribeTopic,
+    String? defaultPublishTopic,
   }) async {
-    if (_client?.connectionStatus?.state == MqttConnectionState.connected && _client?.server == host) {
+    if (subscribeTopic.isEmpty) {
+      debugPrint('MQTT connect aborted: subscribe topic is empty');
+      return false;
+    }
+
+    if (_client?.connectionStatus?.state == MqttConnectionState.connected &&
+        _client?.server == host) {
+      _defaultPublishTopic = defaultPublishTopic;
       return true;
     }
-    
-    final uniqueClientId = '${SecretConfig.mqttClientId}_${DateTime.now().millisecondsSinceEpoch}';
+
+    _defaultPublishTopic = defaultPublishTopic;
+    final uniqueClientId =
+        '${DeviceDefaults.mqttClientIdPrefix}_${DateTime.now().millisecondsSinceEpoch}';
     _client = MqttServerClient.withPort(host, uniqueClientId, port);
     _client!.useWebSocket = useWebSocket;
     if (!useWebSocket) {
@@ -35,11 +46,11 @@ class MqttService {
     _client!.onDisconnected = _onDisconnected;
     _client!.onConnected = _onConnected;
     _client!.onSubscribed = _onSubscribed;
-    
+
     _client!.connectionMessage = MqttConnectMessage()
         .withClientIdentifier(uniqueClientId)
         .startClean();
-    
+
     try {
       await _client!.connect(username, password);
     } catch (e) {
@@ -49,45 +60,42 @@ class MqttService {
     }
 
     if (_client!.connectionStatus!.state == MqttConnectionState.connected) {
-      final topicToSubscribe = subscribeTopic ?? SecretConfig.mqttSubscribeTopic;
-      _client!.subscribe(topicToSubscribe, MqttQos.atMostOnce);
+      _client!.subscribe(subscribeTopic, MqttQos.atMostOnce);
       _client!.updates!.listen((List<MqttReceivedMessage<MqttMessage>> c) {
         final recMess = c[0].payload as MqttPublishMessage;
-        final pt = MqttPublishPayload.bytesToStringAsString(recMess.payload.message);
+        final pt = MqttPublishPayload.bytesToStringAsString(
+          recMess.payload.message,
+        );
         final topic = c[0].topic;
-        
-        if (onTelemetryReceived != null) {
-          onTelemetryReceived!(topic, pt);
-        }
+        onTelemetryReceived?.call(topic, pt);
       });
       return true;
     }
     return false;
   }
 
-  void _onConnected() {
-    debugPrint('MQTT Connected');
-  }
-
-  void _onDisconnected() {
-    debugPrint('MQTT Disconnected');
-  }
-
-  void _onSubscribed(String topic) {
-    debugPrint('MQTT Subscribed to $topic');
-  }
+  void _onConnected() => debugPrint('MQTT Connected');
+  void _onDisconnected() => debugPrint('MQTT Disconnected');
+  void _onSubscribed(String topic) => debugPrint('MQTT Subscribed to $topic');
 
   void publishCommand(String command, {String? topic}) {
+    final target = topic ?? _defaultPublishTopic;
+    if (target == null || target.isEmpty) {
+      debugPrint('MQTT publish skipped: no topic configured');
+      return;
+    }
     if (_client?.connectionStatus?.state == MqttConnectionState.connected) {
       final builder = MqttClientPayloadBuilder();
       builder.addString(command);
-      _client!.publishMessage(topic ?? SecretConfig.mqttPublishTopic, MqttQos.atLeastOnce, builder.payload!);
+      _client!.publishMessage(
+        target,
+        MqttQos.atLeastOnce,
+        builder.payload!,
+      );
     }
   }
 
-  void turnOff({String? topic}) {
-    publishCommand('off', topic: topic);
-  }
+  void turnOff({String? topic}) => publishCommand('off', topic: topic);
 
   void disconnect() {
     _client?.disconnect();

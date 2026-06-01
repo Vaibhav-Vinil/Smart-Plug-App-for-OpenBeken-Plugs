@@ -7,7 +7,8 @@ import 'api_service.dart';
 import 'mqtt_service.dart';
 import 'settings_service.dart';
 import 'discovery_service.dart';
-import 'config.dart';
+import 'device_config_parser.dart';
+import 'device_defaults.dart';
 
 class TelemetryData {
   double voltage;
@@ -133,16 +134,15 @@ class TelemetryProvider extends ChangeNotifier {
   bool _hasLiveData = false;
   bool get hasLiveData => _hasLiveData;
 
-  // Fallback: If "dubai-plug-test-123/1/set" doesn't work, try "dubai-plug-test-123/cmnd/POWER"
   String get activePublishTopic =>
       connectionManager.currentMode == ConnectionMode.global
-      ? "dubai-plug-test-123/1/set"
-      : SecretConfig.mqttPublishTopic;
+          ? settingsService.mqttPublishTopicGlobal
+          : settingsService.mqttPublishTopicRemote;
 
   String get activeSubscribeTopic =>
       connectionManager.currentMode == ConnectionMode.global
-      ? "dubai-plug-test-123/1/state"
-      : SecretConfig.mqttSubscribeTopic;
+          ? settingsService.mqttSubscribeTopicGlobal
+          : settingsService.mqttSubscribeTopicRemote;
 
   String firmwareVersion = 'Unknown';
   String macAddress = 'Unknown';
@@ -160,7 +160,9 @@ class TelemetryProvider extends ChangeNotifier {
     this.settingsService,
     this.discoveryService,
   ) {
-    _apiService = ApiService(ip: settingsService.plugIpAddress);
+    _apiService = ApiService(ip: settingsService.plugIpAddress.isNotEmpty
+        ? settingsService.plugIpAddress
+        : '0.0.0.0');
     connectionManager.addListener(_onConnectionChanged);
     settingsService.addListener(_onSettingsChanged);
     _mqttService.onTelemetryReceived = _onMqttDataReceived;
@@ -170,8 +172,13 @@ class TelemetryProvider extends ChangeNotifier {
 
   void updateHistoryRange(String range) {
     _selectedRange = range;
-    if (_mqttService.isConnected && connectionManager.currentMode == ConnectionMode.global) {
-      _mqttService.publishCommand(json.encode({'range': range}), topic: 'dubai-plug-test-123/history/req');
+    if (_mqttService.isConnected &&
+        connectionManager.currentMode == ConnectionMode.global &&
+        settingsService.hasMqttTopicPrefix) {
+      _mqttService.publishCommand(
+        json.encode({'range': range}),
+        topic: settingsService.mqttHistoryRequestTopic,
+      );
     }
     notifyListeners();
   }
@@ -234,7 +241,8 @@ class TelemetryProvider extends ChangeNotifier {
 
   void _onConnectionChanged() {
     _pollingTimer?.cancel();
-    if (connectionManager.currentMode == ConnectionMode.local) {
+    if (connectionManager.currentMode == ConnectionMode.local &&
+        settingsService.hasPlugIp) {
       _mqttService.disconnect();
       _startLocalPolling();
     } else if (connectionManager.currentMode == ConnectionMode.remote ||
@@ -243,20 +251,23 @@ class TelemetryProvider extends ChangeNotifier {
       if (connectionManager.currentMode == ConnectionMode.global) {
         _startMqttPolling();
       }
+    } else {
+      _mqttService.disconnect();
+      _isDisconnected = true;
+      notifyListeners();
     }
   }
 
   void _startMqttPolling() {
+    if (!settingsService.hasMqttTopicPrefix) return;
     _pollingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (_mqttService.isConnected) {
-        // Request energy counters
-        _mqttService.publishCommand('', topic: 'dubai-plug-test-123/energycounter_today/get');
-        _mqttService.publishCommand('', topic: 'dubai-plug-test-123/energycounter_yesterday/get');
-        _mqttService.publishCommand('', topic: 'dubai-plug-test-123/energycounter_2_days_ago/get');
-        _mqttService.publishCommand('', topic: 'dubai-plug-test-123/energycounter_3_days_ago/get');
-        // Request live power
-        _mqttService.publishCommand('', topic: 'dubai-plug-test-123/power/get');
-        _mqttService.publishCommand('', topic: 'dubai-plug-test-123/voltage/get');
+        _mqttService.publishCommand('', topic: settingsService.mqttTopic('energycounter_today/get'));
+        _mqttService.publishCommand('', topic: settingsService.mqttTopic('energycounter_yesterday/get'));
+        _mqttService.publishCommand('', topic: settingsService.mqttTopic('energycounter_2_days_ago/get'));
+        _mqttService.publishCommand('', topic: settingsService.mqttTopic('energycounter_3_days_ago/get'));
+        _mqttService.publishCommand('', topic: settingsService.mqttTopic('power/get'));
+        _mqttService.publishCommand('', topic: settingsService.mqttTopic('voltage/get'));
       }
     });
   }
@@ -315,15 +326,17 @@ class TelemetryProvider extends ChangeNotifier {
           Future.delayed(const Duration(seconds: 8), () {
             if (discoveryService.discoveredDevices.isNotEmpty) {
               // Look for obkN device specifically if possible, otherwise first match
-              final device = discoveryService.discoveredDevices.firstWhere(
-                (d) => d.name.toLowerCase().contains('obkn'),
-                orElse: () => discoveryService.discoveredDevices.first,
-              );
+              final device = discoveryService.discoveredDevices.first;
 
               debugPrint(
                 'Auto-discovered device: ${device.name} at ${device.ip}',
               );
               settingsService.setPlugIpAddress(device.ip);
+              final prefix =
+                  DeviceConfigParser.mqttTopicPrefixFromDeviceName(device.name);
+              if (prefix != null) {
+                settingsService.setMqttTopicPrefix(prefix);
+              }
             }
             discoveryService.stopDiscovery();
           });
@@ -335,14 +348,45 @@ class TelemetryProvider extends ChangeNotifier {
 
   Future<void> _startMqttConnection() async {
     final isGlobal = connectionManager.currentMode == ConnectionMode.global;
-    // edit thisfor cloudfare
-    final host = isGlobal
-        ? 'wss://sic-respond-offset-developments.trycloudflare.com/mqtt'
-        : settingsService.mqttBrokerHost;
-    final port = isGlobal ? 443 : SecretConfig.mqttBrokerPort;
 
-    // Use wildcard for global mode to catch energy counters
-    final subTopic = isGlobal ? "dubai-plug-test-123/#" : activeSubscribeTopic;
+    if (!settingsService.hasMqttTopicPrefix) {
+      _isDisconnected = true;
+      notifyListeners();
+      return;
+    }
+
+    final String host;
+    final int port;
+    final String subTopic;
+    final String pubTopic;
+
+    if (isGlobal) {
+      if (!settingsService.hasGlobalBridge) {
+        _isDisconnected = true;
+        notifyListeners();
+        return;
+      }
+      host = settingsService.globalBridgeUrl;
+      port = DeviceDefaults.mqttWssPort;
+      subTopic = settingsService.mqttSubscribeTopicGlobal;
+      pubTopic = settingsService.mqttPublishTopicGlobal;
+    } else {
+      if (!settingsService.hasMqttBroker) {
+        _isDisconnected = true;
+        notifyListeners();
+        return;
+      }
+      host = settingsService.mqttBrokerHost;
+      port = settingsService.mqttBrokerPort;
+      subTopic = settingsService.mqttSubscribeTopicRemote;
+      pubTopic = settingsService.mqttPublishTopicRemote;
+    }
+
+    if (subTopic.isEmpty || pubTopic.isEmpty) {
+      _isDisconnected = true;
+      notifyListeners();
+      return;
+    }
 
     final connected = await _mqttService.connect(
       host: host,
@@ -350,14 +394,16 @@ class TelemetryProvider extends ChangeNotifier {
       password: settingsService.mqttPassword,
       useWebSocket: isGlobal,
       port: port,
-      secure:
-          false, // CRITICAL: must be false for WebSockets in mqtt_client, wss:// handles security
+      secure: false,
       subscribeTopic: subTopic,
+      defaultPublishTopic: pubTopic,
     );
 
     if (connected && isGlobal) {
-      // Request history from the Python recorder
-      _mqttService.publishCommand(json.encode({'range': _selectedRange}), topic: 'dubai-plug-test-123/history/req');
+      _mqttService.publishCommand(
+        json.encode({'range': _selectedRange}),
+        topic: settingsService.mqttHistoryRequestTopic,
+      );
     }
 
     _isDisconnected = !connected;
@@ -370,7 +416,7 @@ class TelemetryProvider extends ChangeNotifier {
     debugPrint('MQTT Received: $topic -> $payload');
     
     try {
-      if (topic == 'dubai-plug-test-123/history/res') {
+      if (topic == settingsService.mqttHistoryResponseTopic) {
         final List<dynamic> bulk = json.decode(payload);
         powerHistory.clear();
         for (var item in bulk) {
@@ -427,7 +473,7 @@ class TelemetryProvider extends ChangeNotifier {
       await Future.delayed(const Duration(milliseconds: 500));
       await _fetchLocalData();
     } else if (connectionManager.currentMode == ConnectionMode.remote) {
-      _mqttService.publishCommand('toggle');
+      _mqttService.publishCommand('toggle', topic: activePublishTopic);
     } else if (connectionManager.currentMode == ConnectionMode.global) {
       final payload = _data.isRelayOn ? '0' : '1';
       _data.isRelayOn = !_data.isRelayOn; // Optimistic update
@@ -447,7 +493,7 @@ class TelemetryProvider extends ChangeNotifier {
       await Future.delayed(const Duration(milliseconds: 500));
       await _fetchLocalData();
     } else if (connectionManager.currentMode == ConnectionMode.remote) {
-      _mqttService.turnOff();
+      _mqttService.turnOff(topic: activePublishTopic);
     } else if (connectionManager.currentMode == ConnectionMode.global) {
       _data.isRelayOn = false; // Optimistic update
       _mqttService.publishCommand('0', topic: activePublishTopic);
@@ -466,7 +512,7 @@ class TelemetryProvider extends ChangeNotifier {
       await Future.delayed(const Duration(milliseconds: 500));
       await _fetchLocalData();
     } else if (connectionManager.currentMode == ConnectionMode.remote) {
-      _mqttService.publishCommand('on');
+      _mqttService.publishCommand('on', topic: activePublishTopic);
     } else if (connectionManager.currentMode == ConnectionMode.global) {
       _data.isRelayOn = true; // Optimistic update
       _mqttService.publishCommand('1', topic: activePublishTopic);
@@ -487,7 +533,7 @@ class TelemetryProvider extends ChangeNotifier {
     if (connectionManager.currentMode == ConnectionMode.local) {
       await _apiService.sendRawCommand(command);
     } else if (connectionManager.currentMode == ConnectionMode.remote) {
-      _mqttService.publishCommand(command);
+      _mqttService.publishCommand(command, topic: activePublishTopic);
     } else if (connectionManager.currentMode == ConnectionMode.global) {
       _mqttService.publishCommand(command, topic: activePublishTopic);
     }

@@ -46,13 +46,14 @@ class DiscoveryService extends ChangeNotifier {
   Future<void> startDiscovery() async {
     if (_isScanning) return;
 
+    await _teardownDiscovery();
+
     _discoveredDevices.clear();
     _isScanning = true;
     _scanProgress = 0.0;
     _errorMessage = null;
     notifyListeners();
 
-    // 1. Acquire Multicast Lock for Android
     try {
       await _multicastLock.acquireMulticastLock();
       debugPrint('Multicast Lock acquired');
@@ -60,10 +61,9 @@ class DiscoveryService extends ChangeNotifier {
       debugPrint('Warning: Could not acquire Multicast Lock: $e');
     }
 
-    // 2. Start parallel discovery tracks
     _startMdnsDiscovery();
     _startSsdpDiscovery();
-    _startSubnetScan();
+    await _startSubnetScan();
   }
 
   Future<void> _startMdnsDiscovery() async {
@@ -135,8 +135,10 @@ class DiscoveryService extends ChangeNotifier {
       final wifiIP = await networkInfo.getWifiIP();
       
       if (wifiIP == null) {
-        _errorMessage = 'Could not detect local IP. Please ensure Location Permissions are enabled and you are connected to WiFi.';
+        _errorMessage =
+            'Could not detect local IP. Please ensure Location Permissions are enabled and you are connected to WiFi.';
         notifyListeners();
+        await _completeDiscovery();
         return;
       }
 
@@ -164,6 +166,8 @@ class DiscoveryService extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('Subnet Scan Error: $e');
+    } finally {
+      await _completeDiscovery();
     }
   }
 
@@ -207,20 +211,28 @@ class DiscoveryService extends ChangeNotifier {
     }
   }
 
-  Future<void> stopDiscovery() async {
-    if (!_isScanning) return;
-
+  Future<void> _teardownDiscovery() async {
     try {
       await _mdnsDiscovery?.stop();
+      _mdnsDiscovery = null;
       _ssdpDiscoverer?.stop();
+      _ssdpDiscoverer = null;
       await _multicastLock.releaseMulticastLock();
       debugPrint('Multicast Lock released');
     } catch (e) {
-      debugPrint('Error during discovery stop: $e');
+      debugPrint('Error during discovery teardown: $e');
     }
+  }
 
+  Future<void> _completeDiscovery() async {
+    if (!_isScanning) return;
+    await _teardownDiscovery();
     _isScanning = false;
     notifyListeners();
+  }
+
+  Future<void> stopDiscovery() async {
+    await _completeDiscovery();
   }
 
   @override

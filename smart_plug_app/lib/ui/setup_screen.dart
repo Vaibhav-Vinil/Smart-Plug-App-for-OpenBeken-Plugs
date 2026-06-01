@@ -5,7 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../core/settings_service.dart';
 import '../core/discovery_service.dart';
 import '../core/api_service.dart';
-import '../core/connection_manager.dart';
+import '../core/device_config_parser.dart';
 import '../services/setup_service.dart';
 
 class SetupScreen extends StatefulWidget {
@@ -23,8 +23,13 @@ class _SetupScreenState extends State<SetupScreen> {
   final TextEditingController _ssidController = TextEditingController();
   final TextEditingController _passController = TextEditingController();
 
-  // Step 4 Form
+  // Steps 4–5
   final TextEditingController _ipController = TextEditingController();
+  final TextEditingController _mqttTopicController = TextEditingController();
+  final TextEditingController _mqttBrokerController = TextEditingController();
+  final TextEditingController _mqttUserController = TextEditingController();
+  final TextEditingController _mqttPassController = TextEditingController();
+  final TextEditingController _globalBridgeController = TextEditingController();
 
   bool _isTestingConnection = false;
   String? _testResult;
@@ -59,6 +64,11 @@ class _SetupScreenState extends State<SetupScreen> {
     _ssidController.dispose();
     _passController.dispose();
     _ipController.dispose();
+    _mqttTopicController.dispose();
+    _mqttBrokerController.dispose();
+    _mqttUserController.dispose();
+    _mqttPassController.dispose();
+    _globalBridgeController.dispose();
     super.dispose();
   }
 
@@ -110,39 +120,71 @@ class _SetupScreenState extends State<SetupScreen> {
       _testResult = null;
     });
 
-    final apiService = ApiService(ip: ip);
+    final trimmedIp = ip.trim();
+    final apiService = ApiService(ip: trimmedIp);
     final status = await apiService.fetchStatus();
 
     setState(() {
       _isTestingConnection = false;
       if (status != null) {
         _testResult = 'Success! Device reached.';
-        _ipController.text = ip;
+        _ipController.text = trimmedIp;
+        final fromStatus = DeviceConfigParser.mqttTopicPrefixFromStatus(status);
+        if (fromStatus != null) {
+          _mqttTopicController.text = fromStatus;
+        }
       } else {
-        _testResult = 'Failed to reach device at $ip';
+        _testResult = 'Failed to reach device at $trimmedIp';
       }
     });
   }
 
-  Future<void> _finishSetup() async {
-    final settings = context.read<SettingsService>();
-    final connection = context.read<ConnectionManager>();
+  void _selectDiscoveredDevice(DiscoveredDevice device) {
+    _ipController.text = device.ip;
+    final prefix = DeviceConfigParser.mqttTopicPrefixFromDeviceName(device.name);
+    if (prefix != null) {
+      _mqttTopicController.text = prefix;
+    }
+    _pageController.animateToPage(
+      4,
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
+    );
+    setState(() => _currentStep = 4);
+  }
 
-    // Prefer the WiFi network the phone is on so local mode routing works.
-    String ssid = _ssidController.text.isNotEmpty
-        ? _ssidController.text
-        : settings.localSsid;
-    final activeSsid = connection.currentSsid?.replaceAll('"', '');
-    if (activeSsid != null && activeSsid.isNotEmpty) {
-      ssid = activeSsid;
+  Future<void> _finishSetup() async {
+    final ip = _ipController.text.trim();
+    if (ip.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter the plug IP address before finishing.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
     }
 
-    await settings.saveSettings(
-      ip: _ipController.text.trim(),
-      ssid: ssid,
+    final settings = context.read<SettingsService>();
+    await settings.saveDeviceSettings(
+      ip: ip,
+      mqttTopicPrefix: _mqttTopicController.text.trim().isNotEmpty
+          ? _mqttTopicController.text.trim()
+          : null,
+      mqttHost: _mqttBrokerController.text.trim().isNotEmpty
+          ? _mqttBrokerController.text.trim()
+          : null,
+      mqttUser: _mqttUserController.text.trim().isNotEmpty
+          ? _mqttUserController.text.trim()
+          : null,
+      mqttPass: _mqttPassController.text.trim().isNotEmpty
+          ? _mqttPassController.text.trim()
+          : null,
+      globalBridgeUrl: _globalBridgeController.text.trim().isNotEmpty
+          ? _globalBridgeController.text.trim()
+          : null,
     );
-    await settings.setSetupComplete(true);
-    
+
     if (mounted) {
       Navigator.of(context).pushReplacementNamed('/');
     }
@@ -387,9 +429,21 @@ class _SetupScreenState extends State<SetupScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: discovery.isScanning ? null : () => discovery.startDiscovery(),
-                    icon: const Icon(Icons.search),
-                    label: Text(discovery.isScanning ? 'Scanning...' : 'Start Scan'),
+                    onPressed: discovery.isScanning
+                        ? null
+                        : () => discovery.startDiscovery(),
+                    icon: Icon(
+                      discovery.discoveredDevices.isEmpty
+                          ? Icons.search
+                          : Icons.refresh,
+                    ),
+                    label: Text(
+                      discovery.isScanning
+                          ? 'Scanning...'
+                          : (discovery.discoveredDevices.isEmpty
+                              ? 'Start Scan'
+                              : 'Scan Again'),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -433,13 +487,25 @@ class _SetupScreenState extends State<SetupScreen> {
                     ],
                   ),
                 )
-              else
+              else ...[
                 ...discovery.discoveredDevices.map((device) => ListTile(
                   leading: const Icon(Icons.device_hub, color: Color(0xFF1565C0)),
                   title: Text(device.name),
                   subtitle: Text(device.ip),
-                  trailing: const Icon(Icons.check_circle, color: Colors.green),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _selectDiscoveredDevice(device),
                 )),
+                if (!discovery.isScanning) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    discovery.discoveredDevices.length == 1
+                        ? '1 device found. Tap to select, or scan again.'
+                        : '${discovery.discoveredDevices.length} devices found. Tap to select, or scan again.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 13, color: Colors.black45),
+                  ),
+                ],
+              ],
             ],
           ),
         );
@@ -456,7 +522,7 @@ class _SetupScreenState extends State<SetupScreen> {
         children: [
           TextField(
             controller: _ipController,
-            decoration: const InputDecoration(labelText: 'Device IP (e.g. 10.30.96.227)', border: OutlineInputBorder()),
+            decoration: const InputDecoration(labelText: 'Device IP address', border: OutlineInputBorder()),
             keyboardType: TextInputType.number,
           ),
           const SizedBox(height: 20),
@@ -483,13 +549,64 @@ class _SetupScreenState extends State<SetupScreen> {
     return _buildStepContent(
       title: 'All Set!',
       icon: Icons.check_circle_rounded,
-      content: 'Your Smart Plug is configured and ready to go. Click Finish to start monitoring.',
+      content:
+          'Confirm the plug IP. Optional fields are only needed for MQTT remote/global control.',
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SizedBox(height: 40),
+          TextField(
+            controller: _ipController,
+            decoration: const InputDecoration(
+              labelText: 'Plug IP address',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: TextInputType.number,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _mqttTopicController,
+            decoration: const InputDecoration(
+              labelText: 'MQTT topic prefix (from plug settings)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _mqttBrokerController,
+            decoration: const InputDecoration(
+              labelText: 'Local MQTT broker host (optional)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _mqttUserController,
+            decoration: const InputDecoration(
+              labelText: 'MQTT username (optional)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _mqttPassController,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: 'MQTT password (optional)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _globalBridgeController,
+            decoration: const InputDecoration(
+              labelText: 'Global bridge URL (optional, wss://…/mqtt)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
-            height: 60,
+            height: 56,
             child: ElevatedButton(
               onPressed: _finishSetup,
               style: ElevatedButton.styleFrom(

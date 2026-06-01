@@ -1,13 +1,13 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'config.dart';
+import 'device_defaults.dart';
 
 class ApiService {
   String _ip;
   final String _port;
 
-  ApiService({required String ip, String port = SecretConfig.localHttpPort})
+  ApiService({required String ip, String port = DeviceDefaults.httpPort})
       : _ip = ip,
         _port = port;
 

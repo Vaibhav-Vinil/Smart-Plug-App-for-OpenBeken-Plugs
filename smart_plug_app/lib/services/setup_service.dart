@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 import '../core/discovery_service.dart';
 import '../core/connection_manager.dart';
 import '../core/settings_service.dart';
+import '../core/device_config_parser.dart';
+import '../core/device_defaults.dart';
 
 enum SetupStatus {
   idle,
@@ -38,7 +40,7 @@ class SetupService extends ChangeNotifier {
     _statusMessage = 'Sending WiFi credentials...';
     notifyListeners();
 
-    const targetIp = '192.168.4.1';
+    const targetIp = DeviceDefaults.openBekenProvisioningIp;
 
     try {
       // 1. Send WiFi credentials
@@ -92,6 +94,11 @@ class SetupService extends ChangeNotifier {
     if (_status == SetupStatus.discovering) {
       // CRITICAL: Persistence before navigation
       await settingsService.setPlugIpAddress(device.ip);
+      final prefix =
+          DeviceConfigParser.mqttTopicPrefixFromDeviceName(device.name);
+      if (prefix != null) {
+        await settingsService.setMqttTopicPrefix(prefix);
+      }
       await settingsService.setSetupComplete(true);
       
       _status = SetupStatus.discovered;

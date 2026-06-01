@@ -2,15 +2,23 @@ import sqlite3
 import paho.mqtt.client as mqtt
 import json
 import time
-from datetime import datetime
+import os
 
-# --- CONFIGURATION ---
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
-TOPIC_SUB = "dubai-plug-test-123/#"
-TOPIC_REQ = "dubai-plug-test-123/history/req"
-TOPIC_RES = "dubai-plug-test-123/history/res"
-DB_FILE = "smart_plug_history.db"
+# --- CONFIGURATION (environment-driven, no hardcoded deployment values) ---
+MQTT_BROKER = os.environ.get("MQTT_BROKER", "localhost")
+MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
+MQTT_TOPIC_PREFIX = os.environ.get("MQTT_TOPIC_PREFIX", "plug").strip()
+DB_FILE = os.environ.get("DB_FILE", "smart_plug_history.db")
+
+if not MQTT_TOPIC_PREFIX:
+    raise SystemExit(
+        "Set MQTT_TOPIC_PREFIX to your plug's MQTT client topic/name "
+        "(same value as in the Flutter app Connection settings)."
+    )
+
+TOPIC_SUB = f"{MQTT_TOPIC_PREFIX}/#"
+TOPIC_REQ = f"{MQTT_TOPIC_PREFIX}/history/req"
+TOPIC_RES = f"{MQTT_TOPIC_PREFIX}/history/res"
 
 # --- DATABASE SETUP ---
 def init_db():
@@ -116,7 +124,9 @@ def on_message(client, userdata, msg):
                 pass
 
 # --- MAIN ---
-print("--- Smart Plug History Recorder (v2) ---")
+print("--- Smart Plug History Recorder ---")
+print(f"Broker: {MQTT_BROKER}:{MQTT_PORT}")
+print(f"Topic prefix: {MQTT_TOPIC_PREFIX}")
 init_db()
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 client.on_connect = on_connect

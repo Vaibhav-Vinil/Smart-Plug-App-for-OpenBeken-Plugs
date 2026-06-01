@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:network_info_plus/network_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -13,14 +12,18 @@ class ConnectionManager extends ChangeNotifier {
   final Connectivity _connectivity = Connectivity();
   final NetworkInfo _networkInfo = NetworkInfo();
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  
+
   ConnectionMode _currentMode = ConnectionMode.offline;
   ConnectionMode get currentMode => _currentMode;
 
   String? _currentSsid;
   String? get currentSsid => _currentSsid;
 
-  bool get isWifiConnected => _currentMode != ConnectionMode.offline && _currentSsid != null;
+  bool get isWifiConnected =>
+      _currentMode == ConnectionMode.local ||
+      (_currentSsid != null &&
+          _currentMode != ConnectionMode.offline &&
+          _currentMode != ConnectionMode.global);
 
   ConnectionManager(this.settingsService) {
     _initConnectivity();
@@ -33,11 +36,10 @@ class ConnectionManager extends ChangeNotifier {
 
   Future<void> _initConnectivity() async {
     await requestPermissions();
-    
     final results = await _connectivity.checkConnectivity();
     await _updateConnectionStatus(results);
-
-    _connectivitySubscription = _connectivity.onConnectivityChanged.listen(_updateConnectionStatus);
+    _connectivitySubscription =
+        _connectivity.onConnectivityChanged.listen(_updateConnectionStatus);
   }
 
   Future<void> requestPermissions() async {
@@ -48,11 +50,15 @@ class ConnectionManager extends ChangeNotifier {
   }
 
   Future<void> _updateConnectionStatus(List<ConnectivityResult> results) async {
-    if (settingsService.isGlobalModeEnabled) {
+    if (settingsService.isGlobalModeEnabled && settingsService.canUseGlobalMode) {
       _currentMode = ConnectionMode.global;
       _currentSsid = null;
       notifyListeners();
       return;
+    }
+
+    if (settingsService.isGlobalModeEnabled && !settingsService.canUseGlobalMode) {
+      await settingsService.setGlobalMode(false);
     }
 
     if (results.contains(ConnectivityResult.none)) {
@@ -61,26 +67,23 @@ class ConnectionManager extends ChangeNotifier {
     } else if (results.contains(ConnectivityResult.wifi)) {
       try {
         _currentSsid = await _networkInfo.getWifiName();
-        final ssid = _currentSsid?.replaceAll('"', '');
-
-        // Prefer direct HTTP to the plug when on WiFi. SSID matching alone breaks
-        // manual-IP setup (saved SSID often differs from the active network).
-        final onHomeWifi =
-            ssid == settingsService.localSsid || ssid == 'AndroidWifi';
-        if (onHomeWifi || settingsService.isSetupComplete) {
-          _currentMode = ConnectionMode.local;
-        } else {
-          _currentMode = ConnectionMode.remote;
-        }
       } catch (e) {
         debugPrint('Error getting WiFi name: $e');
-        // If SSID is unavailable but setup is done, still try local HTTP.
-        _currentMode = settingsService.isSetupComplete
-            ? ConnectionMode.local
-            : ConnectionMode.remote;
+        _currentSsid = null;
       }
-    } else {
+
+      if (settingsService.hasPlugIp) {
+        _currentMode = ConnectionMode.local;
+      } else if (settingsService.hasMqttBroker && settingsService.hasMqttTopicPrefix) {
+        _currentMode = ConnectionMode.remote;
+      } else {
+        _currentMode = ConnectionMode.offline;
+      }
+    } else if (settingsService.hasMqttBroker && settingsService.hasMqttTopicPrefix) {
       _currentMode = ConnectionMode.remote;
+      _currentSsid = null;
+    } else {
+      _currentMode = ConnectionMode.offline;
       _currentSsid = null;
     }
     notifyListeners();

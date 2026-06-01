@@ -11,6 +11,7 @@ import 'widgets/schedule_bottom_sheet.dart';
 import 'widgets/smart_tile.dart';
 import 'widgets/device_health.dart';
 import 'widgets/daily_energy_chart.dart';
+import 'device_settings_sheet.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -60,7 +61,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               Switch(
                 value: context.watch<SettingsService>().isGlobalModeEnabled,
-                onChanged: (val) => context.read<SettingsService>().setGlobalMode(val),
+                onChanged: (val) {
+                  final settings = context.read<SettingsService>();
+                  if (val && !settings.canUseGlobalMode) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Set MQTT topic prefix and global bridge URL in Connection settings first.',
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+                  settings.setGlobalMode(val);
+                },
                 activeColor: Colors.purple,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
@@ -74,11 +88,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: Color(0xFF1565C0)),
             onSelected: (value) {
-              if (value == 'delete') {
+              if (value == 'settings') {
+                DeviceSettingsSheet.show(context);
+              } else if (value == 'reconfigure') {
+                Navigator.of(context).pushNamed('/setup');
+              } else if (value == 'delete') {
                 _showDeleteConfirmation(context);
               }
             },
             itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'settings',
+                child: Row(
+                  children: [
+                    Icon(Icons.settings_outlined, color: Color(0xFF1565C0)),
+                    SizedBox(width: 8),
+                    Text('Connection settings'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'reconfigure',
+                child: Row(
+                  children: [
+                    Icon(Icons.wifi, color: Color(0xFF1565C0)),
+                    SizedBox(width: 8),
+                    Text('Reconfigure Wi‑Fi'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'delete',
                 child: Row(
