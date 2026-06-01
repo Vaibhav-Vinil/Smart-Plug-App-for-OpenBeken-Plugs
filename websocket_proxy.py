@@ -2,8 +2,9 @@ import asyncio
 import websockets
 from websockets.server import WebSocketServerProtocol
 
-async def proxy_handler(websocket: WebSocketServerProtocol, path: str):
+async def proxy_handler(websocket):
     """Proxy WebSocket connections to Mosquitto"""
+    path = websocket.request.path
     print(f"Proxy: New connection from {websocket.remote_address}, path: {path}")
     
     # Only handle /mqtt path
@@ -16,7 +17,7 @@ async def proxy_handler(websocket: WebSocketServerProtocol, path: str):
         # Connect to Mosquitto WebSocket
         mosquitto_uri = "ws://localhost:9001/mqtt"
         print(f"Proxy: Connecting to Mosquitto at {mosquitto_uri}")
-        async with websockets.connect(mosquitto_uri) as mosquitto_ws:
+        async with websockets.connect(mosquitto_uri, subprotocols=["mqtt"]) as mosquitto_ws:
             print(f"Proxy: Connected to Mosquitto for client {websocket.remote_address}")
             
             # Bidirectional proxy
@@ -45,10 +46,10 @@ async def proxy_handler(websocket: WebSocketServerProtocol, path: str):
         print(f"Proxy: Client {websocket.remote_address} disconnected")
 
 async def main():
-    print("Starting WebSocket proxy on port 8081...")
+    print("Starting WebSocket proxy on port 8082...")
     print("Proxying /mqtt to ws://localhost:9001/mqtt")
     
-    async with websockets.serve(proxy_handler, "localhost", 8081):
+    async with websockets.serve(proxy_handler, "localhost", 8082):
         await asyncio.Future()  # Run forever
 
 if __name__ == "__main__":

@@ -366,8 +366,25 @@ class TelemetryProvider extends ChangeNotifier {
         notifyListeners();
         return;
       }
-      host = settingsService.globalBridgeUrl;
-      port = DeviceDefaults.mqttWssPort;
+      
+      String rawUrl = settingsService.globalBridgeUrl.trim();
+        // Remove any http:// or https:// prefix that the user might have entered
+        rawUrl = rawUrl.replaceFirst(RegExp(r'^https?://'), '');
+        // Ensure the URL uses the WebSocket secure scheme
+        if (!rawUrl.startsWith('ws://') && !rawUrl.startsWith('wss://')) {
+          rawUrl = 'wss://$rawUrl';
+        }
+        // Ensure the path ends with /mqtt
+        if (!rawUrl.endsWith('/mqtt')) {
+          if (rawUrl.endsWith('/')) {
+            rawUrl = '${rawUrl}mqtt';
+          } else {
+            rawUrl = '$rawUrl/mqtt';
+          }
+        }
+        
+        host = rawUrl;
+        port = DeviceDefaults.mqttWssPort;
       subTopic = settingsService.mqttSubscribeTopicGlobal;
       pubTopic = settingsService.mqttPublishTopicGlobal;
     } else {
@@ -475,9 +492,9 @@ class TelemetryProvider extends ChangeNotifier {
     } else if (connectionManager.currentMode == ConnectionMode.remote) {
       _mqttService.publishCommand('toggle', topic: activePublishTopic);
     } else if (connectionManager.currentMode == ConnectionMode.global) {
-      final payload = _data.isRelayOn ? '0' : '1';
-      _data.isRelayOn = !_data.isRelayOn; // Optimistic update
-      _mqttService.publishCommand(payload, topic: activePublishTopic);
+        final payload = _data.isRelayOn ? '0' : '1';
+        _data.isRelayOn = !_data.isRelayOn; // Optimistic update
+        _mqttService.publishCommand(payload, topic: activePublishTopic);
     }
 
     _isLoading = false;
@@ -495,8 +512,8 @@ class TelemetryProvider extends ChangeNotifier {
     } else if (connectionManager.currentMode == ConnectionMode.remote) {
       _mqttService.turnOff(topic: activePublishTopic);
     } else if (connectionManager.currentMode == ConnectionMode.global) {
-      _data.isRelayOn = false; // Optimistic update
-      _mqttService.publishCommand('0', topic: activePublishTopic);
+        _data.isRelayOn = false; // Optimistic update
+        _mqttService.publishCommand('0', topic: activePublishTopic);
     }
 
     _isLoading = false;
@@ -514,8 +531,8 @@ class TelemetryProvider extends ChangeNotifier {
     } else if (connectionManager.currentMode == ConnectionMode.remote) {
       _mqttService.publishCommand('on', topic: activePublishTopic);
     } else if (connectionManager.currentMode == ConnectionMode.global) {
-      _data.isRelayOn = true; // Optimistic update
-      _mqttService.publishCommand('1', topic: activePublishTopic);
+        _data.isRelayOn = true; // Optimistic update
+        _mqttService.publishCommand('1', topic: activePublishTopic);
     }
 
     _isLoading = false;

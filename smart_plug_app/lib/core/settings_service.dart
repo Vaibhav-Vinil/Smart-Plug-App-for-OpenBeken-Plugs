@@ -65,8 +65,8 @@ class SettingsService extends ChangeNotifier {
     return '';
   }
 
-  String get mqttPublishTopicGlobal => mqttTopic('1/set');
-  String get mqttSubscribeTopicGlobal => mqttTopic('#');
+  String get mqttPublishTopicGlobal => mqttTopic('cmnd/POWER');
+  String get mqttSubscribeTopicGlobal => mqttTopic('stat/POWER');
   String get mqttHistoryRequestTopic => mqttTopic('history/req');
   String get mqttHistoryResponseTopic => mqttTopic('history/res');
 
