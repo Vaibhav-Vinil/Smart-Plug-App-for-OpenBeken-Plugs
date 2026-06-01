@@ -2,9 +2,176 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Cleanup Backend",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/tooling/stop-backend.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared",
+        "close": true
+      }
+    },
+    {
+      "label": "Mosquitto Broker",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/tooling/start-mosquitto.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "mosquitto",
+        "pattern": {
+          "regexp": "^(.*)$",
+          "file": 1,
+          "location": 1,
+          "message": 1
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Starting Mosquitto|mosquitto version",
+          "endsPattern": "running"
+        }
+      },
+      "presentation": {
+        "group": "smart-plug-backend",
+        "panel": "dedicated",
+        "reveal": "always",
+        "focus": false,
+        "clear": true
+      }
+    },
+    {
+      "label": "Cloudflare Tunnel",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/tooling/start-cloudflared.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "cloudflared",
+        "pattern": {
+          "regexp": "^(.*)$",
+          "file": 1,
+          "location": 1,
+          "message": 1
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Starting Cloudflare|Cleanup finished",
+          "endsPattern": "trycloudflare\\.com|Global bridge URL"
+        }
+      },
+      "presentation": {
+        "group": "smart-plug-backend",
+        "panel": "dedicated",
+        "reveal": "always",
+        "focus": true,
+        "clear": true
+      }
+    },
+    {
+      "label": "MQTT Recorder",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/tooling/start-mqtt-recorder.ps1"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "mqtt-recorder",
+        "pattern": {
+          "regexp": "^(.*)$",
+          "file": 1,
+          "location": 1,
+          "message": 1
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Smart Plug History Recorder|Topic prefix",
+          "endsPattern": "Monitoring .+#|Connected to Mosquitto"
+        }
+      },
+      "presentation": {
+        "group": "smart-plug-backend",
+        "panel": "dedicated",
+        "reveal": "always",
+        "focus": false,
+        "clear": true
+      }
+    },
+    {
+      "label": "Cloudflare and Recorder",
+      "dependsOn": [
+        "Cloudflare Tunnel",
+        "MQTT Recorder"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    {
+      "label": "Start Global Backend",
+      "dependsOn": [
+        "Cleanup Backend",
+        "Mosquitto Broker",
+        "Cloudflare and Recorder"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "Start Global Backend and Emulator",
+      "dependsOn": [
+        "Start Global Backend",
+        "Launch Android Emulator"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    {
       "label": "Launch Android Emulator",
       "type": "shell",
-      "command": "powershell -ExecutionPolicy Bypass -File .\\tooling\\launch_emulator.ps1",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}/smart_plug_app/tooling/launch_emulator.ps1"
+      ],
       "options": {
         "cwd": "${workspaceFolder}/smart_plug_app"
       },

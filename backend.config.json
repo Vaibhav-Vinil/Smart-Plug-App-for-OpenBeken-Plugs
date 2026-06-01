@@ -1,0 +1,7 @@
+{
+  "mqttTopicPrefix": "dubai-plug-test-123",
+  "mqttBroker": "localhost",
+  "mosquittoExe": "C:\\Program Files\\mosquitto\\mosquitto.exe",
+  "mosquittoConfig": "local.conf",
+  "cloudflaredExe": "C:\\tools\\cloudflared.exe"
+}

@@ -172,7 +172,13 @@ allow_anonymous true
 ```
 
 ### Starting the Ecosystem
+
+**Recommended:** Open the **BKH** workspace in Cursor/VS Code, choose **Smart Plug App (Phone + Backend)**, press **F5** or **Ctrl+F5**. This stops any leftover backend processes, starts fresh Mosquitto, Cloudflare tunnel, and `mqtt_recorder.py`, then launches the Flutter app.
+
+See **[GLOBAL_SETUP.md](GLOBAL_SETUP.md)** for app settings (plug IP, MQTT topic, Cloudflare `wss://…/mqtt` URL).
+
+**Manual:**
 1. **Broker:** `mosquitto -c local.conf -v`
 2. **Tunnel:** `cloudflared tunnel --url http://localhost:9001`
-3. **Recorder:** `python mqtt_recorder.py`
-4. **App Integration:** Update `telemetry_provider.dart` with the active `trycloudflare.com` URL provided by the tunnel.
+3. **Recorder:** `python mqtt_recorder.py` (set `MQTT_TOPIC_PREFIX` to your plug’s client topic)
+4. **App:** Set **Global bridge URL** in Connection settings to `wss://<tunnel-host>.trycloudflare.com/mqtt` (from the tunnel terminal or `tunnel.url`).

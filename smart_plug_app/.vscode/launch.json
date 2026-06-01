@@ -2,12 +2,23 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Smart Plug App (Android)",
+      "name": "Smart Plug App (Phone + Backend)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "preLaunchTask": "Start Global Backend",
+      "toolArgs": [
+        "--device-timeout",
+        "120"
+      ]
+    },
+    {
+      "name": "Smart Plug App (Emulator + Backend)",
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",
       "deviceId": "emulator-5554",
-      "preLaunchTask": "Launch Android Emulator",
+      "preLaunchTask": "Start Global Backend and Emulator",
       "toolArgs": [
         "--device-timeout",
         "120"
