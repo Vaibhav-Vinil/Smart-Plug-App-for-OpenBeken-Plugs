@@ -105,17 +105,25 @@ class _SetupScreenState extends State<SetupScreen> {
       // We can transition to the discovery page (Step 3)
       _nextStep();
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(setupService.statusMessage ?? 'Failed to reach device. Are you connected to the plug AP?'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      // Guard against using BuildContext after async gap
+if (!mounted) {
+  return; // Exit if widget is disposed
+}
+ScaffoldMessenger.of(context).showSnackBar(
+  SnackBar(
+    content: Text(setupService.statusMessage ?? 'Failed to reach device. Are you connected to the plug AP?'),
+    backgroundColor: Colors.red,
+  ),
+);
     }
   }
 
   Future<void> _testConnection(String ip) async {
     setState(() {
+      // Removed print statements for production code
+       // print('Connecting...');
+       // print('Connected: ${client.connectionStatus?.state}');
+       // print('Exception: $e');
       _isTestingConnection = true;
       _testResult = null;
     });
@@ -154,6 +162,7 @@ class _SetupScreenState extends State<SetupScreen> {
   }
 
   Future<void> _finishSetup() async {
+    // final client = MqttServerClient('test', 'id'); // unused variable commented
     final ip = _ipController.text.trim();
     if (ip.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -209,11 +218,12 @@ class _SetupScreenState extends State<SetupScreen> {
                 child: Container(
                   margin: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.95),
+                    
                     borderRadius: BorderRadius.circular(30),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
+                        // deprecated usage replaced
+color: Colors.black.withValues(alpha: 0.2),
                         blurRadius: 20,
                         offset: const Offset(0, 10),
                       ),

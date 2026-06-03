@@ -10,6 +10,17 @@ import 'discovery_service.dart';
 import 'device_config_parser.dart';
 import 'device_defaults.dart';
 
+// Helper to extract first double from raw response string
+double _parseEnergy(String? resp) {
+  if (resp == null) return 0.0;
+  // Find first numeric pattern
+  final match = RegExp(r'[-+]?[0-9]*\.?[0-9]+').firstMatch(resp);
+  if (match != null) {
+    return double.tryParse(match.group(0) ?? '') ?? 0.0;
+  }
+  return 0.0;
+}
+
 class TelemetryData {
   double voltage;
   double current;
@@ -151,9 +162,10 @@ class TelemetryProvider extends ChangeNotifier {
   final List<MapEntry<double, double>> powerHistory = [];
   String _selectedRange = '1h';
   String get selectedRange => _selectedRange;
-  // Energy used today = total - yesterday (midnight‑to‑now)
-  // Compute today's energy in Wh: total is stored as kWh, convert to Wh then subtract yesterday's Wh
-  double get energyTodayComputed => ((_data.energyTotal * 1000) - _data.energyYesterday).clamp(0.0, double.infinity);
+  double get energyTodayComputed => (_data.energyTotal - _data.energyYesterday).clamp(0.0, double.infinity);
+
+  // New getter returning today’s energy in kWh (used for UI fallback)
+  double get energyTodayKwh => (_data.energyTotal - _data.energyYesterday).clamp(0.0, double.infinity);
   Timer? _pollingTimer;
   static const String _historyKey = 'power_history_v2';
 
@@ -287,34 +299,53 @@ class TelemetryProvider extends ChangeNotifier {
     if (jsonData != null) {
       _isDisconnected = false;
       _hasLiveData = true;
-      _data = TelemetryData.fromJson(jsonData);
-
-      // Fetch extra energy history if not in StatusSNS (common in some OpenBeken versions)
-      if (_data.energyYesterday == 0) {
-        final yestStr = await _apiService.sendRawCommand('energycounter_yesterday');
-        if (yestStr != null) {
-          _data.energyYesterday = double.tryParse(yestStr) ?? 0.0;
-        }
-        
-        final d2Str = await _apiService.sendRawCommand('energycounter_2_days_ago');
-        if (d2Str != null) {
-          _data.energy2DaysAgo = double.tryParse(d2Str) ?? 0.0;
-        }
-        
-        final d3Str = await _apiService.sendRawCommand('energycounter_3_days_ago');
-        if (d3Str != null) {
-          _data.energy3DaysAgo = double.tryParse(d3Str) ?? 0.0;
-        }
-        
-        // NEW: Fetch today's energy if missing
-        if (_data.energyToday == 0) {
-          final todayStr = await _apiService.sendRawCommand('energycounter_today');
-          if (todayStr != null) {
-            _data.energyToday = double.tryParse(todayStr) ?? 0.0;
-          }
-        }
+      _data = TelemetryData.fromJson(jsonData); // Always request detailed energy counters for local mode
+      var yestStr = await _apiService.sendRawCommand('energycounter_yesterday');
+      if (yestStr == null || _parseEnergy(yestStr) == 0.0) {
+        // Fallback to capitalized command name
+        yestStr = await _apiService.sendRawCommand('EnergyYesterday');
+      }
+      if (yestStr != null) {
+        debugPrint('energycounter_yesterday (or fallback): $yestStr');
+        _data.energyYesterday = _parseEnergy(yestStr);
+        debugPrint('parsed energyYesterday: ${_data.energyYesterday}');
       }
 
+      var d2Str = await _apiService.sendRawCommand('energycounter_2_days_ago');
+      if (d2Str == null || _parseEnergy(d2Str) == 0.0) {
+        d2Str = await _apiService.sendRawCommand('Energy2DaysAgo');
+      }
+      if (d2Str != null) {
+        debugPrint('energycounter_2_days_ago (or fallback): $d2Str');
+        _data.energy2DaysAgo = _parseEnergy(d2Str);
+        debugPrint('parsed energy2DaysAgo: ${_data.energy2DaysAgo}');
+      }
+
+      var d3Str = await _apiService.sendRawCommand('energycounter_3_days_ago');
+      if (d3Str == null || _parseEnergy(d3Str) == 0.0) {
+        d3Str = await _apiService.sendRawCommand('Energy3DaysAgo');
+      }
+      if (d3Str != null) {
+        debugPrint('energycounter_3_days_ago (or fallback): $d3Str');
+        _data.energy3DaysAgo = _parseEnergy(d3Str);
+        debugPrint('parsed energy3DaysAgo: ${_data.energy3DaysAgo}');
+      }
+
+      var todayStr = await _apiService.sendRawCommand('energycounter_today');
+      if (todayStr == null || _parseEnergy(todayStr) == 0.0) {
+        todayStr = await _apiService.sendRawCommand('EnergyToday');
+      }
+      if (todayStr != null) {
+        debugPrint('energycounter_today (or fallback): $todayStr');
+        _data.energyToday = _parseEnergy(todayStr);
+        debugPrint('parsed energyToday: ${_data.energyToday}');
+      }
+
+      // Fallback: compute today's energy from total and yesterday if raw command failed
+      if ((_data.energyToday == 0 || _data.energyToday == null) && _data.energyTotal > 0 && _data.energyYesterday > 0) {
+        _data.energyToday = (_data.energyTotal - _data.energyYesterday);
+      }
+      
       if (jsonData.containsKey('StatusNET')) {
         macAddress = jsonData['StatusNET']['Mac'] ?? macAddress;
         ipAddress = jsonData['StatusNET']['IPAddress'] ?? ipAddress;

@@ -13,11 +13,13 @@ void main() async {
   client.connectionMessage = connMess;
 
   try {
-    print('Connecting...');
+// print('Connecting...');
+// print('Connected: ${client.connectionStatus?.state}');
+// print('Exception: $e');
     await client.connect();
-    print('Connected: ${client.connectionStatus?.state}');
+// print('Connected: \\${client.connectionStatus?.state}');
     client.disconnect();
   } catch (e) {
-    print('Exception: $e');
+// print('Exception: $e');
   }
 }

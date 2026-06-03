@@ -16,6 +16,10 @@ class TelemetryCards extends StatelessWidget {
         final voltageFormat = NumberFormat('#,##0.0', 'en_US');
         final currentFormat = NumberFormat('#,##0.000', 'en_US');
         final powerFormat = NumberFormat('#,##0', 'en_US');
+        final whFormat = NumberFormat('#,##0.00', 'en_US'); // Wh with two decimals
+        final kwhFormat = NumberFormat('#,##0.000', 'en_US'); // kWh with three decimals
+
+
 
         return Column(
           children: [
@@ -29,13 +33,13 @@ class TelemetryCards extends StatelessWidget {
                 _buildGridTile('Voltage', voltageFormat.format(data.voltage), 'V', Icons.electric_bolt, Colors.orange),
                 _buildGridTile('Current', currentFormat.format(data.current), 'A', Icons.speed, Colors.blue),
                 _buildGridTile('Power', powerFormat.format(data.power), 'W', Icons.settings_input_component, Colors.red),
-                _buildGridTile('Today', (provider.energyTodayComputed / 1000).toStringAsFixed(3), 'Wh', Icons.today, Colors.teal),
+                _buildGridTile('Today', whFormat.format(provider.energyTodayComputed), 'Wh', Icons.today, Colors.teal),
               ],
             ),
             const SizedBox(height: 16.0),
             _buildHorizontalTile(
               'History - Total Energy',
-              (data.energyTotal / 1000).toStringAsFixed(6),
+              kwhFormat.format(data.energyTotal / 1000),
               'kWh',
               Icons.history,
               Colors.green,
@@ -48,7 +52,7 @@ class TelemetryCards extends StatelessWidget {
 
   Widget _buildGridTile(String title, String value, String unit, IconData icon, Color iconColor) {
     return SmartTile(
-      padding: const EdgeInsets.all(20.0),
+      padding: const EdgeInsets.all(22.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -66,9 +70,13 @@ class TelemetryCards extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.baseline,
                 textBaseline: TextBaseline.alphabetic,
                 children: [
-                  Text(
-                    value,
-                    style: const TextStyle(color: Colors.black87, fontSize: 24, fontWeight: FontWeight.bold),
+                  Expanded(
+                    child: Text(
+                      value,
+                      overflow: TextOverflow.clip,
+                      softWrap: false,
+                      style: const TextStyle(color: Colors.black87, fontSize: 24, fontWeight: FontWeight.bold),
+                    ),
                   ),
                   const SizedBox(width: 4),
                   Text(
@@ -110,12 +118,12 @@ class TelemetryCards extends StatelessWidget {
                   children: [
                     Text(
                       value,
-                      style: const TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.bold),
+                      style: const TextStyle(color: Colors.black87, fontSize: 22, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(width: 4),
                     Text(
                       unit,
-                      style: const TextStyle(color: Colors.black45, fontSize: 14, fontWeight: FontWeight.w600),
+                      style: const TextStyle(color: Colors.black45, fontSize: 12, fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),

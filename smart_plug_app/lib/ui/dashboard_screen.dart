@@ -49,6 +49,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7FB),
       appBar: AppBar(
@@ -64,7 +65,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 onChanged: (val) {
                   final settings = context.read<SettingsService>();
                   if (val && !settings.canUseGlobalMode) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    final messenger = ScaffoldMessenger.of(context);
+                    messenger.showSnackBar(
                       const SnackBar(
                         content: Text(
                           'Set MQTT topic prefix and global bridge URL in Connection settings first.',
@@ -75,7 +77,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   }
                   settings.setGlobalMode(val);
                 },
-                activeColor: Colors.purple,
+                activeThumbColor: Colors.purple,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ],
@@ -180,30 +182,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
                     ),
                     Flexible(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: ['5M', '1H', '24H', '7D'].map((range) {
-                            final isSelected = provider.selectedRange == range.toLowerCase();
-                            return Padding(
-                              padding: const EdgeInsets.only(left: 8.0),
-                              child: ChoiceChip(
-                                label: Text(range, style: TextStyle(fontSize: 10, color: isSelected ? Colors.white : Colors.black54)),
-                                selected: isSelected,
-                                onSelected: (selected) {
-                                  if (selected) {
-                                    provider.updateHistoryRange(range.toLowerCase());
-                                  }
-                                },
-                                selectedColor: const Color(0xFF1565C0),
-                                backgroundColor: Colors.white,
-                                padding: EdgeInsets.zero,
-                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                            );
-                          }).toList(),
-                        ),
+                      child: Wrap(
+                        spacing: 8.0,
+                        runSpacing: 4.0,
+                        children: ['5M', '1H', '24H', '7D'].map((range) {
+                          final isSelected = provider.selectedRange == range.toLowerCase();
+                          return ChoiceChip(
+                            label: Text(range),
+                            selected: isSelected,
+                            selectedColor: const Color(0xFF1565C0),
+                            backgroundColor: Colors.white,
+                            onSelected: (_) {
+                              provider.updateHistoryRange(range.toLowerCase());
+                            },
+                          );
+                        }).toList(),
                       ),
                     ),
                   ],

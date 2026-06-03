@@ -74,12 +74,12 @@ class DiscoveryService extends ChangeNotifier {
       _mdnsDiscovery!.eventStream!.listen((event) async {
         if (event is BonsoirDiscoveryServiceFoundEvent) {
           final service = event.service;
-          if (service != null && service.name.toLowerCase().contains('obk')) {
+          if (service.name.toLowerCase().contains('obk')) {
             await service.resolve(_mdnsDiscovery!.serviceResolver);
           }
         } else if (event is BonsoirDiscoveryServiceResolvedEvent) {
           final service = event.service;
-          if (service != null && service.host != null) {
+          if (service.host != null) {
             _addDevice(
               name: service.name,
               host: service.host!,

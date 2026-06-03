@@ -12,12 +12,11 @@ class DailyEnergyChart extends StatelessWidget {
     return Consumer<TelemetryProvider>(
       builder: (context, provider, child) {
         final data = provider.data;
-        
         final values = [
           data.energy3DaysAgo,
           data.energy2DaysAgo,
           data.energyYesterday,
-          data.energyToday,
+          provider.energyTodayComputed,
         ];
 
         final labels = ['3d ago', '2d ago', 'Yest.', 'Today'];
@@ -33,7 +32,7 @@ class DailyEnergyChart extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Energy Consumption (kWh)',
+                'Energy Consumption (Wh)',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black54),
               ),
               const SizedBox(height: 24),
@@ -50,7 +49,7 @@ class DailyEnergyChart extends StatelessWidget {
                         tooltipMargin: 8,
                         getTooltipItem: (group, groupIndex, rod, rodIndex) {
                           return BarTooltipItem(
-                            '${rod.toY.toStringAsFixed(2)} kWh',
+                            '${rod.toY.toStringAsFixed(3)} Wh',
                             const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                           );
                         },
