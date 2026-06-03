@@ -12,7 +12,7 @@ class TelemetryCards extends StatelessWidget {
     return Consumer<TelemetryProvider>(
       builder: (context, provider, child) {
         final data = provider.data;
-        
+
         final voltageFormat = NumberFormat('#,##0.0', 'en_US');
         final currentFormat = NumberFormat('#,##0.000', 'en_US');
         final powerFormat = NumberFormat('#,##0', 'en_US');
@@ -29,11 +29,17 @@ class TelemetryCards extends StatelessWidget {
                 _buildGridTile('Voltage', voltageFormat.format(data.voltage), 'V', Icons.electric_bolt, Colors.orange),
                 _buildGridTile('Current', currentFormat.format(data.current), 'A', Icons.speed, Colors.blue),
                 _buildGridTile('Power', powerFormat.format(data.power), 'W', Icons.settings_input_component, Colors.red),
-                _buildGridTile('Today', data.energyToday.toStringAsFixed(3), 'kWh', Icons.today, Colors.teal),
+                _buildGridTile('Today', (provider.energyTodayComputed / 1000).toStringAsFixed(3), 'Wh', Icons.today, Colors.teal),
               ],
             ),
             const SizedBox(height: 16.0),
-            _buildHorizontalTile('History - Total Energy', data.energyTotal.toStringAsFixed(3), 'kWh', Icons.history, Colors.green),
+            _buildHorizontalTile(
+              'History - Total Energy',
+              (data.energyTotal / 1000).toStringAsFixed(6),
+              'kWh',
+              Icons.history,
+              Colors.green,
+            ),
           ],
         );
       },
@@ -104,7 +110,7 @@ class TelemetryCards extends StatelessWidget {
                   children: [
                     Text(
                       value,
-                      style: const TextStyle(color: Colors.black87, fontSize: 22, fontWeight: FontWeight.bold),
+                      style: const TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(width: 4),
                     Text(

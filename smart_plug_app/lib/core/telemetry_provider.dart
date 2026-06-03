@@ -151,7 +151,9 @@ class TelemetryProvider extends ChangeNotifier {
   final List<MapEntry<double, double>> powerHistory = [];
   String _selectedRange = '1h';
   String get selectedRange => _selectedRange;
-
+  // Energy used today = total - yesterday (midnight‑to‑now)
+  // Compute today's energy in Wh: total is stored as kWh, convert to Wh then subtract yesterday's Wh
+  double get energyTodayComputed => ((_data.energyTotal * 1000) - _data.energyYesterday).clamp(0.0, double.infinity);
   Timer? _pollingTimer;
   static const String _historyKey = 'power_history_v2';
 
@@ -302,6 +304,14 @@ class TelemetryProvider extends ChangeNotifier {
         final d3Str = await _apiService.sendRawCommand('energycounter_3_days_ago');
         if (d3Str != null) {
           _data.energy3DaysAgo = double.tryParse(d3Str) ?? 0.0;
+        }
+        
+        // NEW: Fetch today's energy if missing
+        if (_data.energyToday == 0) {
+          final todayStr = await _apiService.sendRawCommand('energycounter_today');
+          if (todayStr != null) {
+            _data.energyToday = double.tryParse(todayStr) ?? 0.0;
+          }
         }
       }
 
