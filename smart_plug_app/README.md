@@ -1,50 +1,46 @@
-# Smart Plug App
+# Smart Plug App for OpenBeken
 
-A Flutter application that monitors and controls smart plugs via MQTT over a Cloudflare tunnel.
+An advanced, Flutter-based application designed to monitor and control smart plugs running OpenBeken (or Tasmota) firmware. The app seamlessly transitions between ultra-fast local HTTP control and secure remote MQTT telemetry over a Cloudflare Zero Trust tunnel.
 
-## Getting Started
+## 🚀 Key Features
 
-1. **Install dependencies**
+*   **Dynamic Network Routing**: Automatically detects your home Wi-Fi SSID to switch between Local Mode (<50ms latency via HTTP REST) and Global Mode (cellular remote access via MQTT WebSockets).
+*   **Comprehensive Energy Analytics**: Tracks real-time voltage, current, and power. Accurately distinguishes day-to-day energy spent (Today, Yesterday, 2-Days Ago, 3-Days Ago) natively in Watt-hours (Wh).
+*   **Historical Telemetry**: Stores a rolling window of the last 1000 telemetry points locally and syncs with a Python-based SQLite recorder backend for long-term historical charts.
+*   **Zero-Config Auto Discovery**: Uses mDNS (Zeroconf), SSDP (UPnP), and aggressive subnet sweeping to find unconfigured plugs on your network without manual IP entry.
+*   **Overload Protection**: A background automation service actively monitors live wattage and instantly cuts power if a load exceeds 2500W.
+*   **Premium Neumorphic UI**: Features an animated 3D switch, adaptive choice chips, and a highly responsive `fl_chart` interactive telemetry graph.
+
+## 🏗️ Architecture Overview
+
+The ecosystem consists of four main pillars:
+1.  **OpenBeken Smart Plug**: The IoT hardware acting as the HTTP server and MQTT client.
+2.  **Mosquitto Broker**: The central message bus handling local TCP traffic (1883) and WebSocket traffic (9001).
+3.  **Telemetry Recorder (`mqtt_recorder.py`)**: Persists live MQTT telemetry to a local SQLite database (`smart_plug_history.db`).
+4.  **Flutter App**: The cross-platform mobile client coordinating the data flow and UI rendering.
+
+## 🛠️ Getting Started
+
+### 1. Backend Setup
+*Ensure you have Python and Mosquitto installed.*
+1. Start the Mosquitto broker: `mosquitto -c local.conf -v`
+2. Expose the broker via Cloudflare: `cloudflared tunnel --url http://localhost:9001`
+3. Run the telemetry recorder: `python mqtt_recorder.py`
+
+### 2. App Setup
+Ensure you have Flutter installed and an Android emulator or physical device connected.
 ```bash
+# Get dependencies
 flutter pub get
-```
-2. **Run the app**
-```bash
-# Android device
-flutter run
 
-# Emulator (replace with your emulator ID)
-flutter emulators --launch Medium_Phone_API_36.1
-flutter run -d emulator-5554
-```
-
-## Architecture Overview
-
-- **MQTT Broker**: Mosquitto with WebSocket listener (port 9001).
-- **Cloudflare Tunnel**: Securely expose the broker to the internet (`wss://<your‑tunnel>.trycloudflare.com/mqtt`).
-- **Flutter App**: Connects to the broker, publishes/receives telemetry, and displays data.
-
-## Configuration
-
-Update the broker URL in `lib/core/telemetry_provider.dart` if you change the Cloudflare tunnel:
-```dart
-const String brokerUrl = 'wss://<your‑tunnel>.trycloudflare.com/mqtt';
-```
-
-## Cleaned Project Notes
-
-- Removed placeholder test files (`test_client.dart`, `test_ws.dart`).
-- Deleted the entire `test/` directory.
-- Updated imports and UI widgets to avoid overflow and ensure consistent formatting.
-- Simplified the README by removing outdated commands and irrelevant instructions.
-
-## Running on Windows
-
-Ensure you have an Android emulator or a connected device, then execute:
-```bash
+# Run the app
 flutter run
 ```
 
----
+## ⚙️ Configuration
 
-For more details on the global bridge architecture, see the **Global Mode Architecture** section in the original documentation.
+Update the bridge URL in the in-app **Connection Settings** to match your generated Cloudflare tunnel (e.g., `wss://<your-tunnel>.trycloudflare.com/mqtt`).
+
+## 📚 Documentation
+
+For an exhaustive, in-depth exploration of every feature, function, service, and architectural decision within the project, please refer to the **[Documentation.md](../Documentation.md)** and **[GLOBAL_SETUP.md](../GLOBAL_SETUP.md)** files in the root directory.
