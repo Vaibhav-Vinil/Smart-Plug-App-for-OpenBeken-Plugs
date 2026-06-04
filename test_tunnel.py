@@ -2,7 +2,7 @@ import paho.mqtt.client as mqtt
 import time
 
 # Cloudflare tunnel URL
-TUNNEL_HOST = "donation-width-antiques-res.trycloudflare.com"
+TUNNEL_HOST = "geometry-availability-featuring-controllers.trycloudflare.com"
 TUNNEL_PORT = 443
 TOPIC_PREFIX = "plug"
 COMMAND_TOPIC = f"{TOPIC_PREFIX}/1/set"
